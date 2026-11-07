@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'">
+  <title>HQ</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="../dist/renderer.js"></script>
+</head>
+<body>
+  <header class="titlebar">
+    <span class="window-title">HQ / Projektplaner</span>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-prompt" aria-hidden="true">&gt;_</span>
+        <strong>HQ</strong>
+      </div>
+
+      <nav id="navigation" aria-label="Hauptnavigation"></nav>
+    </aside>
+
+    <main id="main" class="main" aria-busy="true">
+      <div id="content" class="content">
+        <p class="loading">Arbeitsbereich wird geladen …</p>
+      </div>
+    </main>
+    <aside id="details" class="details" aria-label="Aufgabendetails" hidden></aside>
+  </div>
+
+  <footer class="statusbar">
+    <span class="status-label">HQ</span>
+    <span>Lokaler Arbeitsbereich</span>
+    <span class="status-storage">SQLite</span>
+  </footer>
+
+  <div id="notice" class="notice" role="status" aria-atomic="true" hidden></div>
+
+  <dialog id="editor" aria-labelledby="editor-title">
+    <form id="editor-form">
+      <div class="dialog-head">
+        <div>
+          <p id="editor-label" class="eyebrow"></p>
+          <h2 id="editor-title"></h2>
+        </div>
+        <button type="button" class="button compact" id="close-editor" aria-label="Schließen">×</button>
+      </div>
+
+      <fieldset id="editor-fields">
+        <label class="field">
+          <span>Name</span>
+          <input id="entry-title" name="title" type="text" required maxlength="120" autocomplete="off" autofocus>
+        </label>
+        <label class="field extra-field"><span>Beschreibung</span><textarea id="entry-description" rows="3" maxlength="10000"></textarea></label>
+        <div id="task-fields">
+          <div class="field-row">
+            <label class="field"><span>Fällig am</span><input id="entry-due" type="date"></label>
+            <label class="field"><span>Status</span><select id="entry-status"><option value="planned">Geplant</option><option value="in_progress">In Arbeit</option><option value="paused">Pausiert</option><option value="done">Erledigt</option></select></label>
+          </div>
+          <fieldset class="predecessors"><legend>Vorgänger</legend><div id="entry-predecessors"></div><button type="button" class="button compact" id="add-predecessor" aria-label="Vorgänger hinzufügen" title="Vorgänger hinzufügen">+</button></fieldset>
+        </div>
+        <div class="field-row">
+          <label class="field">
+            <span>Priorität</span>
+            <select id="entry-priority" name="priority">
+              <option value="high">Hoch</option>
+              <option value="normal">Normal</option>
+              <option value="low">Niedrig</option>
+            </select>
+          </label>
+          <label class="field" id="project-field">
+            <span>Projekt</span>
+            <select id="entry-project" name="project"></select>
+          </label>
+        </div>
+      </fieldset>
+
+      <p id="editor-error" class="editor-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="button secondary" id="cancel-editor">Abbrechen</button>
+        <button type="submit" class="button primary" id="save-entry">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="predecessor-dialog" aria-labelledby="predecessor-dialog-title">
+    <form id="predecessor-form">
+      <div class="dialog-head"><h2 id="predecessor-dialog-title">Vorgänger auswählen</h2><button type="button" class="button compact" id="close-predecessor" aria-label="Schließen">×</button></div>
+      <fieldset>
+        <label class="field"><span>Projekt</span><select id="predecessor-project" required></select></label>
+        <label class="field extra-field"><span>Aufgabe</span><select id="predecessor-task" required disabled></select></label>
+        <p id="predecessor-empty" class="muted" hidden>Keine weiteren Aufgaben in diesem Projekt verfügbar.</p>
+      </fieldset>
+      <div class="dialog-actions"><button type="button" class="button secondary" id="cancel-predecessor">Abbrechen</button><button type="submit" class="button primary" id="confirm-predecessor" disabled>Übernehmen</button></div>
+    </form>
+  </dialog>
+</body>
+</html>
