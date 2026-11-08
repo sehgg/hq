@@ -100,6 +100,16 @@ export class PlannerDatabase {
   if (this.db.prepare('SELECT 1 FROM releases WHERE project_id=? AND version=? AND id<>?').get(release.projectId,name,id)) throw new Error('Diese Version ist in diesem Projekt bereits vorhanden.');
   this.db.prepare('UPDATE releases SET version=?, due_date=? WHERE id=?').run(name,date,id);
  }
+ deleteRelease(id: number): void {
+  identifier(id);
+  this.db.exec('BEGIN');
+  try {
+   if (!this.db.prepare('SELECT 1 FROM releases WHERE id=?').get(id)) throw new Error('Das Release wurde nicht gefunden.');
+   this.db.prepare('UPDATE tasks SET release_id=NULL, target_version=NULL WHERE release_id=?').run(id);
+   this.db.prepare('DELETE FROM releases WHERE id=?').run(id);
+   this.db.exec('COMMIT');
+  } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+ }
  publishRelease(id: number): void {
   identifier(id);
   if (!this.db.prepare('UPDATE releases SET published=1 WHERE id=? AND published=0').run(id).changes) throw new Error('Das Release wurde nicht gefunden oder ist bereits veröffentlicht.');

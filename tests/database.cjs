@@ -392,3 +392,24 @@ test('existing releases receive an empty due date without losing assignments or 
   assert.equal(workspace.releases[0].dueDate,null); assert.equal(workspace.releases[0].published,true);
   assert.equal(workspace.tasks[0].releaseId,release); assert.equal(workspace.tasks[0].targetVersion,'v1'); db.close();
 });
+
+test('deleting a release preserves linked features and fixes, clears their assignments and rolls back on failure', t => {
+  const file=tempDatabase(t); let db=new PlannerDatabase(file);
+  db.saveProject(null,{title:'App',priority:'normal',description:'',kind:'software'}); const project=db.read().projects[0].id;
+  db.createRelease(project,'v1','2026-12-20'); db.createRelease(project,'v2');
+  const old=db.read().releases.find(r=>r.version==='v1').id, other=db.read().releases.find(r=>r.version==='v2').id;
+  db.saveTask(null,fields('Feature',{projectId:project,kind:'feature',releaseId:old,description:'bleibt'}));
+  db.saveTask(null,fields('Fix',{projectId:project,kind:'fix',releaseId:old,criteria:[{id:null,text:'geprüft',completed:true}]}));
+  db.saveTask(null,fields('Anderer Fix',{projectId:project,kind:'fix',releaseId:other}));
+  db.publishRelease(old);
+  const external=new DatabaseSync(file); external.exec("CREATE TRIGGER refuse_release_delete BEFORE DELETE ON releases BEGIN SELECT RAISE(ABORT, 'test failure'); END;"); external.close();
+  assert.throws(()=>db.deleteRelease(old),/test failure/);
+  assert.equal(find(db,'Feature').releaseId,old); assert.equal(find(db,'Fix').releaseId,old);
+  const external2=new DatabaseSync(file); external2.exec('DROP TRIGGER refuse_release_delete'); external2.close();
+  db.deleteRelease(old); assert.throws(()=>db.deleteRelease(old),/nicht gefunden/); db.close();
+  db=new PlannerDatabase(file); const w=db.read();
+  assert.equal(w.releases.length,1); assert.equal(w.releases[0].id,other);
+  assert.equal(find(db,'Feature').releaseId,null); assert.equal(find(db,'Feature').targetVersion,null); assert.equal(find(db,'Feature').description,'bleibt');
+  assert.equal(find(db,'Fix').releaseId,null); assert.equal(find(db,'Fix').criteria[0].completed,true); assert.equal(find(db,'Anderer Fix').releaseId,other);
+  db.close();
+});

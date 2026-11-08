@@ -16,6 +16,7 @@ export interface HqApi {
  createRelease(projectId: number, version: string, dueDate: string | null): Promise<Workspace>;
  renameRelease(id: number, version: string, dueDate: string | null): Promise<Workspace>;
  publishRelease(id: number): Promise<Workspace>;
+ deleteRelease(id: number): Promise<Workspace>;
  saveProject(id: number | null, fields: ProjectFields): Promise<Workspace>;
  saveTask(id: number | null, fields: TaskFields): Promise<Workspace>;
  completeTask(id: number, completed: boolean): Promise<Workspace>;

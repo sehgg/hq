@@ -40,6 +40,11 @@
 
   <div id="notice" class="notice" role="status" aria-atomic="true" hidden></div>
 
+  <dialog id="delete-release-dialog" aria-labelledby="delete-release-title" aria-describedby="delete-release-description">
+    <div class="dialog-head"><h2 id="delete-release-title">Release löschen?</h2></div>
+    <div class="delete-content"><p id="delete-release-description"></p><p id="delete-release-error" class="editor-error" role="alert" hidden></p></div>
+    <div class="dialog-actions"><button type="button" class="button secondary" id="cancel-delete-release" autofocus>Abbrechen</button><button type="button" class="button danger" id="confirm-delete-release">Endgültig löschen</button></div>
+  </dialog>
   <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
     <div class="dialog-head"><h2 id="delete-title"></h2></div>
     <div class="delete-content"><p id="delete-description"></p><p id="delete-error" class="editor-error" role="alert" hidden></p></div>

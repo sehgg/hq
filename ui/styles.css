@@ -439,3 +439,5 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
 .task-tabs { flex-wrap: wrap; }
 .release-actions { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
 .release-due { display: block; color: var(--muted); font-size: 11px; }
+.release-open { min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; overflow-wrap: anywhere; }
+.release-open:hover strong { color: var(--accent-primary); text-decoration: underline; }

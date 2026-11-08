@@ -371,3 +371,30 @@ test('release dialogs clearly create and edit versions with due dates', async t 
   assert.equal(db.read().releases[0].version,'v1.1'); assert.equal(db.read().releases[0].dueDate,'2027-01-05'); assert.match(node('#content').innerHTML,/Fällig am 05\.01\.2027/);
   db.close();
 });
+
+test('release details open from the overview and deletion requires confirmation', async t => {
+  const {mkdtempSync,rmSync}=require('node:fs'); const {join}=require('node:path'); const {tmpdir}=require('node:os'); const {PlannerDatabase}=require('../dist/database');
+  const dir=mkdtempSync(join(tmpdir(),'hq-release-details-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const path=join(dir,'hq.sqlite'); let db=new PlannerDatabase(path);
+  db.saveProject(null,{title:'App',priority:'normal',description:'',kind:'software'}); const project=db.read().projects[0].id;
+  db.createRelease(project,'v1','2026-12-20'); const release=db.read().releases[0].id;
+  const base={priority:'normal',description:'',featureId:null,releaseId:release,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]};
+  db.saveTask(null,{...base,title:'Feature A',kind:'feature'}); db.saveTask(null,{...base,title:'Fix B',kind:'fix'});
+  let deletes=0;
+  const hq={read:()=>new Promise(()=>{}),deleteRelease:async id=>{deletes++;db.deleteRelease(id);return db.read();},renameRelease:async(id,version,due)=>{db.renameRelease(id,version,due);return db.read();}};
+  const {api,node,click}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases');
+  assert.match(node('#content').innerHTML,/data-action="show-release"/);
+  click('show-release',release); assert.equal(node('#details').hidden,false);
+  assert.match(node('#details').innerHTML,/<h2>v1<\/h2>/); assert.match(node('#details').innerHTML,/20\.12\.2026/);
+  assert.match(node('#details').innerHTML,/Feature A/); assert.match(node('#details').innerHTML,/Fix B/); assert.match(node('#details').innerHTML,/aria-label="Release bearbeiten"/);
+  const feature=db.read().tasks.find(item=>item.title==='Feature A'); click('show-task',feature.id);
+  assert.match(node('#details').innerHTML,/<h2>Feature A<\/h2>/); assert.doesNotMatch(node('#details').innerHTML,/aria-label="Release bearbeiten"/);
+  click('close-details'); assert.equal(node('#details').hidden,true); click('show-release',release);
+  assert.match(node('#details').innerHTML,/<h2>v1<\/h2>/);
+  click('edit-release',release); assert.equal(node('#release-dialog').open,true); assert.equal(node('#release-version').value,'v1');
+  node('#release-version').value='v1.1'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}}); assert.match(node('#details').innerHTML,/<h2>v1\.1<\/h2>/);
+  click('delete-release',release); assert.equal(node('#delete-release-dialog').open,true); assert.match(node('#delete-release-description').textContent,/bleiben erhalten/);
+  node('#cancel-delete-release').dispatch('click'); assert.equal(deletes,0); assert.equal(db.read().releases.length,1);
+  click('delete-release',release); await node('#confirm-delete-release').dispatchAsync('click');
+  assert.equal(deletes,1); assert.equal(node('#details').hidden,true); assert.match(node('#content').innerHTML,/Noch keine Releases/);
+  db.close(); db=new PlannerDatabase(path); const w=db.read(); assert.equal(w.releases.length,0); assert.equal(w.tasks.length,2); assert.equal(w.tasks.every(task=>task.releaseId===null),true); db.close();
+});

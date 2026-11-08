@@ -5,6 +5,7 @@ const api: HqApi = {
   read: () => ipcRenderer.invoke('workspace:read'),
   createRelease: (projectId, version, dueDate) => ipcRenderer.invoke('release:create', projectId, version, dueDate),
   renameRelease: (id, version, dueDate) => ipcRenderer.invoke('release:rename', id, version, dueDate),
+  deleteRelease: id => ipcRenderer.invoke('release:delete', id),
   publishRelease: id => ipcRenderer.invoke('release:publish', id),
   saveProject: (id, fields) => ipcRenderer.invoke('project:save', id, fields),
   saveTask: (id, fields) => ipcRenderer.invoke('task:save', id, fields),
