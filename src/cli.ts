@@ -13,6 +13,7 @@ const help = `HQ CLI
   hq releases (--project NAME | --project-id ID) [--json]
   hq release-create (--project NAME | --project-id ID) --version VERSION [--due YYYY-MM-DD]
   hq tasks --project NAME [--title TEXT] [--json]
+  hq tasks --all --open [--kind task|feature|fix] [--json]
   hq show (--id ID | --project NAME --title TEXT) [--json]
   hq create (--project NAME | --project-id ID | --inbox) --title TEXT [--kind task|feature|fix] [options]
   hq edit (--id ID | --project NAME --title TEXT) [--new-title TEXT] [options]
@@ -27,7 +28,7 @@ Options: --description TEXT --priority low|normal|high --status planned|in_progr
 Use task IDs to resolve ambiguous matches. Tasks without a title filter are suggestions only.\n`;
 const options = Object.fromEntries(['project','project-id','move-to','title','new-title','id','kind','description','priority','status','due','predecessors','feature','release','criteria','subtask','criterion','text','version','db'].map(key => [key,{type:'string' as const}]));
 let args: ReturnType<typeof parseArgs>;
-try { args = parseArgs({args:process.argv.slice(2), options:{...options,json:{type:'boolean'},undo:{type:'boolean'},help:{type:'boolean'},inbox:{type:'boolean'}},allowPositionals:true,strict:true}); }
+try { args = parseArgs({args:process.argv.slice(2), options:{...options,json:{type:'boolean'},undo:{type:'boolean'},help:{type:'boolean'},inbox:{type:'boolean'},all:{type:'boolean'},open:{type:'boolean'}},allowPositionals:true,strict:true}); }
 catch (error) {
  const message=error instanceof Error ? error.message : 'Ungültige Argumente.';
  process.stderr.write(process.argv.includes('--json') ? JSON.stringify({ok:false,error:{code:'INVALID_ARGUMENT',message}})+'\n' : `INVALID_ARGUMENT: ${message}\n`);
@@ -110,6 +111,13 @@ function run():void {
   if (command==='project') return render(projectFor(w,str('project')));
   if (command==='releases') { const project=projectFor(w,str('project')); return render(w.releases.filter(r=>r.projectId===project.id).sort((a,b)=>a.id-b.id)); }
   if (command==='tasks') {
+   if (v.all) {
+    if (str('project') || str('project-id') || v.inbox) return fail('INVALID_ARGUMENT','--all kann nicht mit einem Projekt oder --inbox kombiniert werden.');
+    const kind=str('kind'); if (kind && !['task','feature','fix'].includes(kind)) return fail('INVALID_ARGUMENT','Der Aufgabentyp ist ungültig.');
+    const term=str('title')?.toLocaleLowerCase('de');
+    const items=w.tasks.filter(t=>(!v.open || !t.completed) && (!kind || t.kind===kind) && (!term || t.title.toLocaleLowerCase('de').includes(term))).sort((a,b)=>a.id-b.id);
+    return render(items.map(t=>taskDetail(w,t)));
+   }
    const project=projectFor(w,str('project')); const term=str('title')?.toLocaleLowerCase('de');
    const items=w.tasks.filter(t=>t.projectId===project.id && (term ? t.title.toLocaleLowerCase('de').includes(term) : !t.completed && t.predecessorIds.every(id=>w.tasks.find(x=>x.id===id)?.completed) && w.subtasks.filter(x=>x.taskId===t.id).every(x=>x.completed))).sort((a,b)=>a.id-b.id);
    if (!json && !term) console.log('Offene, umsetzbare Einträge – bitte anhand der ID auswählen:');

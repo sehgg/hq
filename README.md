@@ -61,6 +61,7 @@ Examples:
 ```sh
 hq projects --json
 hq tasks --project "My project"
+hq tasks --all --open --kind task
 hq releases --project "My project"
 hq release-create --project "My project" --version "v1.0"
 hq create --inbox --title "Review inbox"
@@ -72,7 +73,7 @@ hq subtask-done --subtask 3
 hq done --id 12
 ```
 
-`projects` and `project` read project details; `releases` lists a project's releases and their IDs. `tasks` with only a project lists open entries whose predecessors and subtasks are complete; it never changes an entry. A title filter searches case-insensitively. Use an entry `--id`, or `--project-id` for duplicate project names, to select an unambiguous match before changing anything. `create` and `edit` support descriptions, priority, status, dates, predecessor IDs, feature and release IDs, and `--criteria` as a JSON array containing `id`, `text`, and `completed`. A new criterion has `id: null`; existing IDs must belong to the entry. `criterion-done` toggles a criterion, and `--undo` reopens a criterion or subtask. `--move-to` changes the project by ID; the same project and release consistency rules apply. Deletion remains in the desktop app.
+`projects` and `project` read project details; `releases` lists a project's releases and their IDs. `tasks` with only a project lists open entries whose predecessors and subtasks are complete; it never changes an entry. `tasks --all --open` lists all open entries across projects and the inbox, including blocked entries; `--kind` narrows the result to tasks, features, or fixes. A title filter searches case-insensitively. Use an entry `--id`, or `--project-id` for duplicate project names, to select an unambiguous match before changing anything. `create` and `edit` support descriptions, priority, status, dates, predecessor IDs, feature and release IDs, and `--criteria` as a JSON array containing `id`, `text`, and `completed`. A new criterion has `id: null`; existing IDs must belong to the entry. `criterion-done` toggles a criterion, and `--undo` reopens a criterion or subtask. `--move-to` changes the project by ID; the same project and release consistency rules apply. Deletion remains in the desktop app.
 
 `--json` returns `{ "ok": true, "data": ... }` on standard output. Projects and search results are ordered by numeric ID; task details include their sorted predecessor and successor IDs and subtasks. Status values are `planned`, `in_progress`, `paused`, and `done`; entry kinds are `task`, `feature`, and `fix`. Failures are written to standard error as `{ "ok": false, "error": { "code": "...", "message": "..." } }`. Exit codes are 0 for success, 2 for invalid arguments or validation errors, 3 for ambiguity, 4 for missing entries or database, and 5 for a concurrent change or busy database. Error codes include `INVALID_ARGUMENT`, `VALIDATION_ERROR`, `AMBIGUOUS`, `NOT_FOUND`, `DATABASE_NOT_FOUND`, `CONFLICT`, and `DATABASE_BUSY`.
 

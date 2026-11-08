@@ -80,6 +80,19 @@ test('CLI creates inbox tasks and project releases without accepting an ambiguou
  assert.equal(run('release-create','--project','App','--version','CLI-Test').body.error.code,'VALIDATION_ERROR');
 });
 
+test('all open tasks include blocked and inbox entries without including completed tasks or other kinds',t=>{
+ const {run}=fixture(t);
+ const blocker=run('create','--project','App','--title','Vorgänger').body.data;
+ const blocked=run('create','--project','App','--title','Blockiert','--predecessors',String(blocker.id)).body.data;
+ const inbox=run('create','--inbox','--title','Eingang').body.data;
+ const done=run('create','--project','App','--title','Fertig','--status','done').body.data;
+ const feature=run('create','--project','App','--title','Feature','--kind','feature').body.data;
+ const result=run('tasks','--all','--open','--kind','task');
+ assert.equal(result.status,0); assert.deepEqual(result.body.data.map(item=>item.id),[blocker.id,blocked.id,inbox.id]);
+ assert.equal(result.body.data.some(item=>item.id===done.id || item.id===feature.id),false);
+ assert.equal(run('tasks','--all','--open','--project','App').body.error.code,'INVALID_ARGUMENT');
+});
+
 test('simultaneous writers cannot silently overwrite each other',async t=>{
  const {db,path}=fixture(t);
  const {fork}=require('node:child_process');
