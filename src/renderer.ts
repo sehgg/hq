@@ -16,7 +16,10 @@ interface Window {
 
 const releaseDialog = document.querySelector<HTMLDialogElement>('#release-dialog')!;
 const releaseForm = document.querySelector<HTMLFormElement>('#release-form')!;
+const releaseDue = document.querySelector<HTMLInputElement>('#release-due')!;
 const releaseVersion = document.querySelector<HTMLInputElement>('#release-version')!;
+const releaseTitle = document.querySelector<HTMLElement>('#release-dialog-title')!;
+const saveRelease = document.querySelector<HTMLButtonElement>('#save-release')!;
 const releaseError = document.querySelector<HTMLElement>('#release-error')!;
 const publishDialog = document.querySelector<HTMLDialogElement>('#publish-dialog')!;
 const publishDescription = document.querySelector<HTMLElement>('#publish-description')!;
@@ -65,6 +68,7 @@ let workspace: Workspace = { projects: [], tasks: [], subtasks: [], releases: []
 let view: View = 'inbox';
 let activeTab: TaskKind | 'releases' = 'task';
 let pendingReleaseId: number | null = null;
+let editingReleaseId: number | null = null;
 let editorPublishedReleaseId: number | null = null;
 let editorTaskKind: TaskKind = 'task';
 let editing: EditorMode | null = null;
@@ -260,7 +264,7 @@ function releasePanel(project: Project): string {
   return `<section class="panel" aria-labelledby="release-heading"><header class="panel-header"><h2 id="release-heading">Releases</h2><span class="panel-meta">${releases.length} ${releases.length === 1 ? 'Release' : 'Releases'}</span></header>
     ${releases.length ? `<ul class="list">${releases.map(release => {
       const items = workspace.tasks.filter(task => task.releaseId === release.id && task.kind !== 'task');
-      return `<li class="release-row"><div class="release-heading"><div><strong>${escapeHtml(release.version)}</strong> <span class="muted">${release.published ? 'Veröffentlicht' : 'Geplant'}</span></div>${release.published ? '' : `<button type="button" class="button compact" data-action="publish-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} veröffentlichen">Veröffentlichen</button>`}</div><ul class="detail-list">${items.length ? items.map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${item.kind === 'fix' ? 'Fix' : 'Feature'} · ${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') : '<li class="muted">Keine Features oder Fixes zugeordnet</li>'}</ul></li>`;
+      return `<li class="release-row"><div class="release-heading"><div><strong>${escapeHtml(release.version)}</strong> <span class="muted">${release.published ? 'Veröffentlicht' : 'Geplant'}</span>${release.dueDate ? `<span class="release-due">Fällig am ${escapeHtml(release.dueDate.split('-').reverse().join('.'))}</span>` : ''}</div><div class="release-actions"><button type="button" class="button compact" data-action="edit-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} bearbeiten" title="Release bearbeiten">B</button>${release.published ? '' : `<button type="button" class="button compact" data-action="publish-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} veröffentlichen">Veröffentlichen</button>`}</div></div><ul class="detail-list">${items.length ? items.map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${item.kind === 'fix' ? 'Fix' : 'Feature'} · ${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') : '<li class="muted">Keine Features oder Fixes zugeordnet</li>'}</ul></li>`;
     }).join('')}</ul>` : emptyState('Noch keine Releases', 'Plane eine Version für dieses Softwareprojekt.', addButton('new-release', 'Release anlegen', 'secondary'))}</section>`;
 }
 function updateReleaseOptions(show: boolean, selectedId: number | null): void {
@@ -273,19 +277,27 @@ function updateReleaseOptions(show: boolean, selectedId: number | null): void {
   publishedVersion.hidden = !editorPublishedReleaseId;
   publishedVersion.textContent = editorPublishedReleaseId ? `Aktuelles Release: ${selected!.version} (veröffentlicht)` : '';
 }
-function openReleaseDialog(): void {
+function openReleaseDialog(id: number | null = null): void {
   if (typeof view !== 'number' || workspace.projects.find(project => project.id === view)?.kind !== 'software') return;
-  releaseVersion.value = ''; releaseError.hidden = true; releaseDialog.showModal(); releaseVersion.focus();
+  const release = id === null ? undefined : workspace.releases.find(item => item.id === id && item.projectId === view);
+  if (id !== null && !release) return;
+  editingReleaseId = id;
+  releaseTitle.textContent = release ? 'Release bearbeiten' : 'Neues Release';
+  releaseVersion.value = release?.version ?? '';
+  releaseDue.value = release?.dueDate ?? '';
+  saveRelease.textContent = release ? 'Speichern' : 'Release anlegen';
+  releaseError.hidden = true; releaseDialog.showModal(); releaseVersion.focus();
 }
 for (const id of ['close-release', 'cancel-release']) document.querySelector(`#${id}`)!.addEventListener('click', () => { if (!saving) releaseDialog.close(); });
 releaseDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
 releaseForm.addEventListener('submit', async event => {
   event.preventDefault();
   if (saving || typeof view !== 'number') return;
-  saving = true; releaseError.hidden = true;
-  try { workspace = await window.hq.createRelease(view, releaseVersion.value); releaseDialog.close(); render(); announce('Release angelegt.'); }
+  const id = editingReleaseId;
+  saving = true; saveRelease.disabled = true; releaseError.hidden = true;
+  try { workspace = id === null ? await window.hq.createRelease(view, releaseVersion.value, releaseDue.value || null) : await window.hq.renameRelease(id, releaseVersion.value, releaseDue.value || null); releaseDialog.close(); render(); announce(id === null ? 'Release angelegt.' : 'Release gespeichert.'); }
   catch (error) { releaseError.textContent = errorMessage(error); releaseError.hidden = false; }
-  finally { saving = false; }
+  finally { saving = false; saveRelease.disabled = false; }
 });
 function openPublishDialog(id: number): void {
   const release = workspace.releases.find(item => item.id === id && !item.published);
@@ -618,6 +630,7 @@ document.addEventListener('click', event => {
     case 'tab-feature': activeTab = 'feature'; selectedTaskId = null; render(); break;
     case 'tab-releases': activeTab = 'releases'; selectedTaskId = null; render(); break;
     case 'new-release': openReleaseDialog(); break;
+    case 'edit-release': openReleaseDialog(Number(target.dataset.id)); break;
     case 'publish-release': openPublishDialog(Number(target.dataset.id)); break;
     case 'tab-fix': activeTab = 'fix'; selectedTaskId = null; render(); break;
     case 'add-feature-task': openFeatureTaskDialog(); break;

@@ -5,6 +5,7 @@ function title(value: unknown): string { if (typeof value !== 'string' || !value
 function description(value: unknown): string { if (typeof value !== 'string' || value.length > 10000) throw new Error('Die Beschreibung ist ungültig.'); return value.trim(); }
 function priority(value: unknown): Priority { if (value !== 'high' && value !== 'normal' && value !== 'low') throw new Error('Diese Priorität ist ungültig.'); return value; }
 function identifier(value: number): number { if (!Number.isSafeInteger(value) || value < 1) throw new Error('Dieser Eintrag ist ungültig.'); return value; }
+function validDate(value: unknown): string | null { if (value === null) return null; if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0,10) !== value) throw new Error('Das Fälligkeitsdatum ist ungültig.'); return value; }
 function status(value: unknown): TaskStatus { if (value !== 'planned' && value !== 'in_progress' && value !== 'paused' && value !== 'done') throw new Error('Dieser Status ist ungültig.'); return value; }
 export class PlannerDatabase {
  private readonly db: DatabaseSync;
@@ -51,6 +52,7 @@ export class PlannerDatabase {
     published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0,1)),
     UNIQUE(project_id,version)
    ) STRICT;`);
+   if (!columns('releases').has('due_date')) this.db.exec('ALTER TABLE releases ADD COLUMN due_date TEXT');
    if (!tc.has('release_id')) {
     this.db.exec(`ALTER TABLE tasks ADD COLUMN release_id INTEGER REFERENCES releases(id);
      INSERT INTO releases (project_id, version)
@@ -70,7 +72,7 @@ export class PlannerDatabase {
  }
  read(): Workspace {
   const projects = this.db.prepare(`SELECT id, title, priority, description, kind FROM projects ORDER BY ${byPriority}, id DESC`).all() as unknown as Project[];
-  const releases = this.db.prepare('SELECT id, project_id AS projectId, version, published FROM releases ORDER BY id DESC').all() as unknown as Array<Omit<Release,'published'> & {published:number}>;
+  const releases = this.db.prepare('SELECT id, project_id AS projectId, version, due_date AS dueDate, published FROM releases ORDER BY id DESC').all() as unknown as Array<Omit<Release,'published'> & {published:number}>;
   const rows = this.db.prepare(`SELECT t.id, t.title, t.priority, t.description, t.kind, t.feature_id AS featureId, t.release_id AS releaseId, r.version AS targetVersion, t.project_id AS projectId, t.due_date AS dueDate, t.status, t.completed FROM tasks t LEFT JOIN releases r ON r.id=t.release_id ORDER BY t.due_date IS NULL, t.due_date ASC, CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, t.id DESC`).all() as unknown as Array<Omit<Task,'completed'|'predecessorIds'|'successorIds'|'criteria'> & {completed:number}>;
   const edges = this.db.prepare('SELECT predecessor_id AS predecessorId, successor_id AS successorId FROM task_dependencies').all() as unknown as {predecessorId:number; successorId:number}[];
   const criteria = this.db.prepare('SELECT id, task_id AS taskId, text, completed FROM acceptance_criteria ORDER BY position, id').all() as unknown as {id:number; taskId:number; text:string; completed:number}[];
@@ -85,11 +87,18 @@ export class PlannerDatabase {
   if (fields.kind === 'normal' && (this.db.prepare("SELECT 1 FROM tasks WHERE project_id=? AND kind IN ('feature','fix')").get(id) || this.db.prepare('SELECT 1 FROM releases WHERE project_id=?').get(id))) throw new Error('Verschiebe zuerst die Features und Fixes in ein anderes Softwareprojekt.');
   if (!this.db.prepare('UPDATE projects SET title=?, priority=?, description=?, kind=? WHERE id=?').run(...args, id).changes) throw new Error('Das Projekt wurde nicht gefunden.');
  }
- createRelease(projectId: number, version: string): void {
-  identifier(projectId); const name = title(version);
+ createRelease(projectId: number, version: string, dueDate: string | null = null): void {
+  identifier(projectId); const name = title(version); const date = validDate(dueDate);
   if (!this.db.prepare("SELECT 1 FROM projects WHERE id=? AND kind='software'").get(projectId)) throw new Error('Releases benötigen ein Softwareprojekt.');
   if (this.db.prepare('SELECT 1 FROM releases WHERE project_id=? AND version=?').get(projectId,name)) throw new Error('Diese Version ist in diesem Projekt bereits vorhanden.');
-  this.db.prepare('INSERT INTO releases (project_id,version) VALUES (?,?)').run(projectId,name);
+  this.db.prepare('INSERT INTO releases (project_id,version,due_date) VALUES (?,?,?)').run(projectId,name,date);
+ }
+ renameRelease(id: number, version: string, dueDate: string | null): void {
+  identifier(id); const name = title(version); const date = validDate(dueDate);
+  const release = this.db.prepare('SELECT project_id AS projectId FROM releases WHERE id=?').get(id) as {projectId: number} | undefined;
+  if (!release) throw new Error('Das Release wurde nicht gefunden.');
+  if (this.db.prepare('SELECT 1 FROM releases WHERE project_id=? AND version=? AND id<>?').get(release.projectId,name,id)) throw new Error('Diese Version ist in diesem Projekt bereits vorhanden.');
+  this.db.prepare('UPDATE releases SET version=?, due_date=? WHERE id=?').run(name,date,id);
  }
  publishRelease(id: number): void {
   identifier(id);
@@ -121,8 +130,7 @@ export class PlannerDatabase {
   if (new Set(existingIds).size !== existingIds.length) throw new Error('Ein Akzeptanzkriterium wurde mehrfach angegeben.');
   const featureId = fields.featureId === null ? null : identifier(fields.featureId);
   if (featureId !== null && (featureId === id || fields.kind !== 'task' || projectId === null || !this.db.prepare(`SELECT 1 FROM tasks f JOIN projects p ON p.id=f.project_id WHERE f.id=? AND f.kind IN ('feature','fix') AND f.project_id=? AND p.kind='software'`).get(featureId,projectId))) throw new Error('Das Feature oder der Fix muss zum selben Softwareprojekt gehören.');
-  const due=fields.dueDate;
-  if (due !== null && (typeof due !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(due) || !Number.isFinite(Date.parse(due)) || new Date(due).toISOString().slice(0,10)!==due)) throw new Error('Das Fälligkeitsdatum ist ungültig.');
+  const due=validDate(fields.dueDate);
   if (!Array.isArray(fields.predecessorIds)) throw new Error('Die Vorgänger sind ungültig.');
   const predecessors = [...new Set(fields.predecessorIds.map(identifier))];
   this.db.exec('BEGIN');

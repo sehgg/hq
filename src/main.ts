@@ -34,7 +34,8 @@ function createWindow(): void {
 function setupDatabase(): void {
   const store = new PlannerDatabase(join(app.getPath('userData'), 'hq.sqlite'));
   ipcMain.handle('workspace:read', () => store.read());
-  ipcMain.handle('release:create', (_event, projectId: number, version: string) => { store.createRelease(projectId, version); return store.read(); });
+  ipcMain.handle('release:create', (_event, projectId: number, version: string, dueDate: string | null) => { store.createRelease(projectId, version, dueDate); return store.read(); });
+  ipcMain.handle('release:rename', (_event, id: number, version: string, dueDate: string | null) => { store.renameRelease(id, version, dueDate); return store.read(); });
   ipcMain.handle('release:publish', (_event, id: number) => { store.publishRelease(id); return store.read(); });
   ipcMain.handle('project:save', (_event, id: number | null, fields: ProjectFields) => {
     store.saveProject(id, fields);

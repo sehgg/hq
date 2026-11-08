@@ -355,3 +355,19 @@ test('release tab plans and publishes parallel releases while preserving shipped
   html=node('#content').innerHTML; assert.match(html,/v0\.4\.0/); assert.match(html,/Veröffentlicht/); assert.match(html,/Fix · Fix bearbeitet/); assert.match(html,/Feature · Feature/);
   db.close();
 });
+
+test('release dialogs clearly create and edit versions with due dates', async t => {
+  const {mkdtempSync,rmSync}=require('node:fs'); const {join}=require('node:path'); const {tmpdir}=require('node:os'); const {PlannerDatabase}=require('../dist/database');
+  const dir=mkdtempSync(join(tmpdir(),'hq-release-edit-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const db=new PlannerDatabase(join(dir,'hq.sqlite'));
+  db.saveProject(null,{title:'App',priority:'normal',description:'',kind:'software'}); const project=db.read().projects[0].id;
+  const hq={read:()=>new Promise(()=>{}),createRelease:async(id,version,due)=>{db.createRelease(id,version,due);return db.read();},renameRelease:async(id,version,due)=>{db.renameRelease(id,version,due);return db.read();}};
+  const {api,node,click}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases'); click('new-release');
+  assert.equal(node('#release-dialog').open,true); assert.equal(node('#release-dialog-title').textContent,'Neues Release'); assert.equal(node('#save-release').textContent,'Release anlegen');
+  node('#release-version').value='v1'; node('#release-due').value='2026-12-20'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
+  const release=db.read().releases[0]; assert.equal(release.dueDate,'2026-12-20');
+  assert.match(node('#content').innerHTML,/Fällig am 20\.12\.2026/); assert.match(node('#content').innerHTML,/data-action="edit-release"/);
+  click('edit-release',release.id); assert.equal(node('#release-dialog-title').textContent,'Release bearbeiten'); assert.equal(node('#release-version').value,'v1'); assert.equal(node('#release-due').value,'2026-12-20');
+  node('#release-version').value='v1.1'; node('#release-due').value='2027-01-05'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
+  assert.equal(db.read().releases[0].version,'v1.1'); assert.equal(db.read().releases[0].dueDate,'2027-01-05'); assert.match(node('#content').innerHTML,/Fällig am 05\.01\.2027/);
+  db.close();
+});

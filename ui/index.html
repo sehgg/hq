@@ -100,8 +100,8 @@
   </dialog>
   <dialog id="release-dialog" aria-labelledby="release-dialog-title">
     <form id="release-form"><div class="dialog-head"><h2 id="release-dialog-title">Neues Release</h2><button type="button" class="button compact" id="close-release" aria-label="Schließen">×</button></div>
-    <fieldset><label class="field"><span>Versionsnummer</span><input id="release-version" type="text" maxlength="120" required placeholder="z. B. v0.4.0"></label></fieldset>
-    <p id="release-error" class="editor-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" class="button secondary" id="cancel-release">Abbrechen</button><button type="submit" class="button primary" aria-label="Release anlegen">+</button></div></form>
+    <fieldset><label class="field"><span>Versionsnummer</span><input id="release-version" type="text" maxlength="120" required placeholder="z. B. v0.4.0"></label><label class="field extra-field"><span>Fällig am</span><input id="release-due" type="date"></label></fieldset>
+    <p id="release-error" class="editor-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" class="button secondary" id="cancel-release">Abbrechen</button><button type="submit" class="button primary" id="save-release">Release anlegen</button></div></form>
   </dialog>
   <dialog id="publish-dialog" aria-labelledby="publish-title" aria-describedby="publish-description">
     <div class="dialog-head"><h2 id="publish-title">Release veröffentlichen?</h2></div><div class="delete-content"><p id="publish-description"></p><p id="publish-error" class="editor-error" role="alert" hidden></p></div>

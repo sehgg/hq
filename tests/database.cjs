@@ -365,3 +365,30 @@ test('parallel releases enforce project and publication rules without losing shi
   assert.equal(w.tasks.find(x=>x.id===fix.id).releaseId,v04); assert.equal(w.tasks.find(x=>x.id===fix.id).targetVersion,'v0.4.0');
   assert.equal(w.tasks.find(x=>x.title==='Feature').releaseId,v05); db.close();
 });
+
+test('releases can be renamed and assigned an optional due date without losing their content', t => {
+  const file=tempDatabase(t); let db=new PlannerDatabase(file);
+  db.saveProject(null,{title:'App',priority:'normal',description:'',kind:'software'}); const project=db.read().projects[0].id;
+  db.createRelease(project,'v0.4.0','2026-12-15'); db.createRelease(project,'v0.5.0');
+  const release=db.read().releases.find(x=>x.version==='v0.4.0');
+  db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:release.id}));
+  db.renameRelease(release.id,'v0.4.1','2026-12-20');
+  assert.equal(find(db,'Fix').releaseId,release.id); assert.equal(find(db,'Fix').targetVersion,'v0.4.1');
+  assert.throws(()=>db.renameRelease(release.id,'v0.5.0',null),/bereits vorhanden/);
+  assert.throws(()=>db.renameRelease(release.id,'v0.4.2','2026-02-30'),/Fälligkeitsdatum/);
+  db.publishRelease(release.id); db.renameRelease(release.id,'v0.4.2',null); db.close();
+  db=new PlannerDatabase(file); const result=db.read().releases.find(x=>x.id===release.id);
+  assert.equal(result.version,'v0.4.2'); assert.equal(result.dueDate,null); assert.equal(result.published,true);
+  assert.equal(find(db,'Fix').targetVersion,'v0.4.2'); db.close();
+});
+
+test('existing releases receive an empty due date without losing assignments or publication state', t => {
+  const file=tempDatabase(t); let db=new PlannerDatabase(file);
+  db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
+  db.createRelease(project,'v1'); const release=db.read().releases[0].id;
+  db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:release})); db.publishRelease(release); db.close();
+  const old=new DatabaseSync(file); old.exec('ALTER TABLE releases DROP COLUMN due_date'); old.close();
+  db=new PlannerDatabase(file); const workspace=db.read();
+  assert.equal(workspace.releases[0].dueDate,null); assert.equal(workspace.releases[0].published,true);
+  assert.equal(workspace.tasks[0].releaseId,release); assert.equal(workspace.tasks[0].targetVersion,'v1'); db.close();
+});
