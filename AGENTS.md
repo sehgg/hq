@@ -7,4 +7,5 @@ HQ is a local desktop planner for personal projects, priorities, and standalone 
 - Obtain the user's approval before installing any external dependencies.
 - Write documentation, agent instructions, and similar project materials in English, even when the user's instructions are in German.
 - Review the relevant documentation with every code change and update it as needed.
+- Do not use Computer Use for testing. The user runs any tests that require it. Continue working toward the goal while those tests are pending.
 - Every change has to be comitted
