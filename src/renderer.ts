@@ -5,6 +5,7 @@ type Workspace = import('./shared').Workspace;
 type CriterionFields = import('./shared').CriterionFields;
 type TaskKind = import('./shared').TaskKind;
 type ProjectKind = import('./shared').ProjectKind;
+type ReleaseStatus = import('./shared').ReleaseStatus;
 type TaskStatus = import('./shared').TaskStatus;
 type HqApi = import('./shared').HqApi;
 type View = 'inbox' | 'projects' | 'ideas' | 'research' | number;
@@ -84,6 +85,7 @@ let selectedReleaseId: number | null = null;
 let pendingDeleteReleaseId: number | null = null;
 let selectedPredecessors = new Set<number>();
 let draftCriteria: CriterionFields[] = [];
+const releaseStatusNames: Record<ReleaseStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', published: 'Veröffentlicht' };
 const statusNames: Record<TaskStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', done: 'Erledigt' };
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': Error: /, '') : 'Der Vorgang konnte nicht gespeichert werden.'; }
 let noticeTimer: number | undefined;
@@ -272,7 +274,7 @@ function releasePanel(project: Project): string {
   return `<section class="panel" aria-labelledby="release-heading"><header class="panel-header"><h2 id="release-heading">Releases</h2><span class="panel-meta">${releases.length} ${releases.length === 1 ? 'Release' : 'Releases'}</span></header>
     ${releases.length ? `<ul class="list">${releases.map(release => {
       const items = workspace.tasks.filter(task => task.releaseId === release.id && task.kind !== 'task');
-      return `<li class="release-row"><div class="release-heading"><button type="button" class="release-open" data-action="show-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} öffnen"><strong>${escapeHtml(release.version)}</strong> <span class="muted">${release.published ? 'Veröffentlicht' : 'Geplant'}</span>${release.dueDate ? `<span class="release-due">Fällig am ${escapeHtml(release.dueDate.split('-').reverse().join('.'))}</span>` : ''}</button><div class="release-actions"><button type="button" class="button compact" data-action="edit-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} bearbeiten" title="Release bearbeiten">B</button>${release.published ? '' : `<button type="button" class="button compact" data-action="publish-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} veröffentlichen">Veröffentlichen</button>`}</div></div><ul class="detail-list">${items.length ? items.map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${item.kind === 'fix' ? 'Fix' : 'Feature'} · ${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') : '<li class="muted">Keine Features oder Fixes zugeordnet</li>'}</ul></li>`;
+      return `<li class="release-row"><div class="release-heading"><button type="button" class="release-open" data-action="show-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} öffnen"><strong>${escapeHtml(release.version)}</strong> <span class="muted">${releaseStatusNames[release.status]}</span>${release.dueDate ? `<span class="release-due">Fällig am ${escapeHtml(release.dueDate.split('-').reverse().join('.'))}</span>` : ''}</button><div class="release-actions"><button type="button" class="button compact" data-action="edit-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} bearbeiten" title="Release bearbeiten">B</button>${release.published ? '' : `<button type="button" class="button compact" data-action="publish-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} veröffentlichen">Veröffentlichen</button>`}</div></div><ul class="detail-list">${items.length ? items.map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${item.kind === 'fix' ? 'Fix' : 'Feature'} · ${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') : '<li class="muted">Keine Features oder Fixes zugeordnet</li>'}</ul></li>`;
     }).join('')}</ul>` : emptyState('Noch keine Releases', 'Plane eine Version für dieses Softwareprojekt.', addButton('new-release', 'Release anlegen', 'secondary'))}</section>`;
 }
 function updateReleaseOptions(show: boolean, selectedId: number | null): void {
@@ -294,7 +296,7 @@ function openReleaseDialog(id: number | null = null): void {
   releaseVersion.value = release?.version ?? '';
   releaseDue.value = release?.dueDate ?? '';
   document.querySelector<HTMLElement>('#release-status-field')!.hidden = !release;
-  releaseStatus.value = release?.published ? 'published' : 'planned';
+  releaseStatus.value = release?.status ?? 'planned';
   saveRelease.textContent = release ? 'Speichern' : 'Release anlegen';
   releaseError.hidden = true; releaseDialog.showModal(); releaseVersion.focus();
 }
@@ -305,7 +307,7 @@ releaseForm.addEventListener('submit', async event => {
   if (saving || typeof view !== 'number') return;
   const id = editingReleaseId;
   saving = true; saveRelease.disabled = true; releaseError.hidden = true;
-  try { workspace = id === null ? await window.hq.createRelease(view, releaseVersion.value, releaseDue.value || null) : await window.hq.renameRelease(id, releaseVersion.value, releaseDue.value || null, releaseStatus.value === 'published'); releaseDialog.close(); render(); announce(id === null ? 'Release angelegt.' : 'Release gespeichert.'); }
+  try { workspace = id === null ? await window.hq.createRelease(view, releaseVersion.value, releaseDue.value || null) : await window.hq.renameRelease(id, releaseVersion.value, releaseDue.value || null, releaseStatus.value as ReleaseStatus); releaseDialog.close(); render(); announce(id === null ? 'Release angelegt.' : 'Release gespeichert.'); }
   catch (error) { releaseError.textContent = errorMessage(error); releaseError.hidden = false; }
   finally { saving = false; saveRelease.disabled = false; }
 });
@@ -418,7 +420,7 @@ function renderDetails(): void {
       return matching.length ? matching.map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') : '<li class="muted">Keine</li>';
     };
     details.innerHTML = `<header class="details-header"><div class="details-heading"><p class="eyebrow">Release</p><h2>${escapeHtml(release.version)}</h2></div><div class="details-actions"><button type="button" class="button compact" data-action="edit-release" data-id="${release.id}" aria-label="Release bearbeiten">B</button><button type="button" class="button compact" data-action="close-details" aria-label="Details schließen">×</button></div></header>
-      <div class="details-body"><section><h3>Status</h3><p>${release.published ? 'Veröffentlicht' : 'Geplant'}</p></section><section><h3>Fällig am</h3><p>${release.dueDate ? escapeHtml(release.dueDate.split('-').reverse().join('.')) : 'Kein Datum'}</p></section>
+      <div class="details-body"><section><h3>Status</h3><p>${releaseStatusNames[release.status]}</p></section><section><h3>Fällig am</h3><p>${release.dueDate ? escapeHtml(release.dueDate.split('-').reverse().join('.')) : 'Kein Datum'}</p></section>
       <section><h3>Features</h3><ul class="detail-list">${list('feature')}</ul></section><section><h3>Fixes</h3><ul class="detail-list">${list('fix')}</ul></section>
       ${release.published ? '' : `<button type="button" class="button secondary" data-action="publish-release" data-id="${release.id}">Veröffentlichen</button>`}
       <button type="button" class="button danger" data-action="delete-release" data-id="${release.id}" aria-label="Release löschen">Löschen</button></div>`;

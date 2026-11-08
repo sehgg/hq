@@ -417,3 +417,26 @@ test('release status selection updates details and planned release choices', asy
   api.setWorkspace(db.read()); api.setTab('fix'); api.openEditor({kind:'task',id:null}); assert.equal(node('#entry-target-version').children.some(option=>option.text==='v1'),true);
   db.close();
 });
+
+test('release status edits show all states and prevent publication while features are open', async t => {
+  const {mkdtempSync,rmSync}=require('node:fs'); const {join}=require('node:path'); const {tmpdir}=require('node:os'); const {PlannerDatabase}=require('../dist/database');
+  const dir=mkdtempSync(join(tmpdir(),'hq-release-ready-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const path=join(dir,'hq.sqlite'); let db=new PlannerDatabase(path);
+  db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
+  db.createRelease(project,'v1'); const id=db.read().releases[0].id;
+  db.saveTask(null,{title:'Feature',kind:'feature',priority:'normal',description:'',featureId:null,releaseId:id,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]});
+  const hq={read:()=>new Promise(()=>{}),renameRelease:async(id,v,d,status)=>{db.renameRelease(id,v,d,status);return db.read();},publishRelease:async id=>{db.publishRelease(id);return db.read();}};
+  const {api,node,click}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases'); click('show-release',id);
+  for (const [value,label] of [['in_progress','In Arbeit'],['paused','Pausiert']]) {
+    click('edit-release',id); node('#release-status').value=value; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
+    assert.equal(db.read().releases[0].status,value); assert.match(node('#details').innerHTML,new RegExp(label));
+  }
+  click('edit-release',id); node('#release-status').value='published'; node('#release-version').value='v1.1'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
+  assert.equal(node('#release-dialog').open,true); assert.equal(node('#release-error').hidden,false); assert.equal(db.read().releases[0].version,'v1');
+  node('#cancel-release').dispatch('click'); click('publish-release',id); await node('#confirm-publish').dispatchAsync('click');
+  assert.equal(node('#publish-dialog').open,true); assert.equal(node('#publish-error').hidden,false); assert.equal(db.read().releases[0].published,false);
+  node('#cancel-publish').dispatch('click'); const feature=db.read().tasks[0]; db.completeTask(feature.id,true); api.setWorkspace(db.read());
+  click('edit-release',id); node('#release-status').value='published'; node('#release-version').value='v1.1'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
+  assert.equal(db.read().releases[0].status,'published'); assert.equal(db.read().tasks[0].targetVersion,'v1.1');
+  click('show-task',feature.id); assert.match(node('#details').innerHTML,/v1\.1 \(veröffentlicht\)/);
+  db.close();
+});

@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { Priority, Project, ProjectFields, Task, TaskFields, TaskStatus, Subtask, Workspace, Release } from './shared';
+import type { Priority, Project, ProjectFields, Task, TaskFields, TaskStatus, Subtask, Workspace, Release, ReleaseStatus } from './shared';
 const byPriority = "CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END";
 function title(value: unknown): string { if (typeof value !== 'string' || !value.trim() || value.trim().length > 120) throw new Error('Der Name muss zwischen 1 und 120 Zeichen haben.'); return value.trim(); }
 function description(value: unknown): string { if (typeof value !== 'string' || value.length > 10000) throw new Error('Die Beschreibung ist ungültig.'); return value.trim(); }
@@ -52,7 +52,12 @@ export class PlannerDatabase {
     published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0,1)),
     UNIQUE(project_id,version)
    ) STRICT;`);
-   if (!columns('releases').has('due_date')) this.db.exec('ALTER TABLE releases ADD COLUMN due_date TEXT');
+   const releaseColumns = columns('releases');
+   if (!releaseColumns.has('due_date')) this.db.exec('ALTER TABLE releases ADD COLUMN due_date TEXT');
+   if (!releaseColumns.has('status')) {
+    this.db.exec("ALTER TABLE releases ADD COLUMN status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','in_progress','paused','published'))");
+    this.db.exec("UPDATE releases SET status='published' WHERE published=1");
+   }
    if (!tc.has('release_id')) {
     this.db.exec(`ALTER TABLE tasks ADD COLUMN release_id INTEGER REFERENCES releases(id);
      INSERT INTO releases (project_id, version)
@@ -72,7 +77,7 @@ export class PlannerDatabase {
  }
  read(): Workspace {
   const projects = this.db.prepare(`SELECT id, title, priority, description, kind FROM projects ORDER BY ${byPriority}, id DESC`).all() as unknown as Project[];
-  const releases = this.db.prepare('SELECT id, project_id AS projectId, version, due_date AS dueDate, published FROM releases ORDER BY id DESC').all() as unknown as Array<Omit<Release,'published'> & {published:number}>;
+  const releases = this.db.prepare('SELECT id, project_id AS projectId, version, due_date AS dueDate, status, published FROM releases ORDER BY id DESC').all() as unknown as Array<Omit<Release,'published'> & {published:number}>;
   const rows = this.db.prepare(`SELECT t.id, t.title, t.priority, t.description, t.kind, t.feature_id AS featureId, t.release_id AS releaseId, r.version AS targetVersion, t.project_id AS projectId, t.due_date AS dueDate, t.status, t.completed FROM tasks t LEFT JOIN releases r ON r.id=t.release_id ORDER BY t.due_date IS NULL, t.due_date ASC, CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, t.id DESC`).all() as unknown as Array<Omit<Task,'completed'|'predecessorIds'|'successorIds'|'criteria'> & {completed:number}>;
   const edges = this.db.prepare('SELECT predecessor_id AS predecessorId, successor_id AS successorId FROM task_dependencies').all() as unknown as {predecessorId:number; successorId:number}[];
   const criteria = this.db.prepare('SELECT id, task_id AS taskId, text, completed FROM acceptance_criteria ORDER BY position, id').all() as unknown as {id:number; taskId:number; text:string; completed:number}[];
@@ -93,13 +98,15 @@ export class PlannerDatabase {
   if (this.db.prepare('SELECT 1 FROM releases WHERE project_id=? AND version=?').get(projectId,name)) throw new Error('Diese Version ist in diesem Projekt bereits vorhanden.');
   this.db.prepare('INSERT INTO releases (project_id,version,due_date) VALUES (?,?,?)').run(projectId,name,date);
  }
- renameRelease(id: number, version: string, dueDate: string | null, published?: boolean): void {
+ renameRelease(id: number, version: string, dueDate: string | null, status?: ReleaseStatus): void {
   identifier(id); const name = title(version); const date = validDate(dueDate);
-  if (published !== undefined && typeof published !== 'boolean') throw new Error('Der Releasestatus ist ungültig.');
-  const release = this.db.prepare('SELECT project_id AS projectId, published FROM releases WHERE id=?').get(id) as {projectId: number; published: number} | undefined;
+  if (status !== undefined && !['planned','in_progress','paused','published'].includes(status)) throw new Error('Der Releasestatus ist ungültig.');
+  const release = this.db.prepare('SELECT project_id AS projectId, status FROM releases WHERE id=?').get(id) as {projectId: number; status: ReleaseStatus} | undefined;
   if (!release) throw new Error('Das Release wurde nicht gefunden.');
   if (this.db.prepare('SELECT 1 FROM releases WHERE project_id=? AND version=? AND id<>?').get(release.projectId,name,id)) throw new Error('Diese Version ist in diesem Projekt bereits vorhanden.');
-  this.db.prepare('UPDATE releases SET version=?, due_date=?, published=? WHERE id=?').run(name,date,published === undefined ? release.published : Number(published),id);
+  const nextStatus = status ?? release.status;
+  if (nextStatus === 'published' && release.status !== 'published') this.ensureReleaseCanPublish(id);
+  this.db.prepare('UPDATE releases SET version=?, due_date=?, published=?, status=? WHERE id=?').run(name,date,Number(nextStatus === 'published'),nextStatus,id);
  }
  deleteRelease(id: number): void {
   identifier(id);
@@ -111,9 +118,14 @@ export class PlannerDatabase {
    this.db.exec('COMMIT');
   } catch (error) { this.db.exec('ROLLBACK'); throw error; }
  }
+ private ensureReleaseCanPublish(id: number): void {
+  if (this.db.prepare("SELECT 1 FROM tasks WHERE release_id=? AND kind='feature' AND status<>'done'").get(id)) throw new Error('Schließe zuerst alle zugehörigen Features ab.');
+ }
  publishRelease(id: number): void {
   identifier(id);
-  if (!this.db.prepare('UPDATE releases SET published=1 WHERE id=? AND published=0').run(id).changes) throw new Error('Das Release wurde nicht gefunden oder ist bereits veröffentlicht.');
+  if (!this.db.prepare('SELECT 1 FROM releases WHERE id=? AND published=0').get(id)) throw new Error('Das Release wurde nicht gefunden oder ist bereits veröffentlicht.');
+  this.ensureReleaseCanPublish(id);
+  this.db.prepare("UPDATE releases SET published=1, status='published' WHERE id=?").run(id);
  }
  private ensureCanComplete(id: number): void {
   if (this.db.prepare('SELECT 1 FROM subtasks WHERE task_id=? AND completed=0').get(id)) throw new Error('Schließe zuerst alle Unteraufgaben ab.');

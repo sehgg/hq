@@ -1,4 +1,5 @@
 export type Priority = 'low' | 'normal' | 'high';
+export type ReleaseStatus = 'planned' | 'in_progress' | 'paused' | 'published';
 export type TaskStatus = 'planned' | 'in_progress' | 'paused' | 'done';
 export type ProjectKind = 'normal' | 'software';
 export type TaskKind = 'task' | 'feature' | 'fix';
@@ -9,12 +10,12 @@ export interface TaskFields extends BaseFields { kind: TaskKind; featureId: numb
 export interface Project extends ProjectFields { id: number }
 export interface Task extends TaskFields { targetVersion: string | null; id: number; completed: boolean; successorIds: number[] }
 export interface Subtask { id: number; taskId: number; title: string; completed: boolean }
-export interface Release { id: number; projectId: number; version: string; dueDate: string | null; published: boolean }
+export interface Release { id: number; projectId: number; version: string; dueDate: string | null; status: ReleaseStatus; published: boolean }
 export interface Workspace { releases: Release[]; projects: Project[]; tasks: Task[]; subtasks: Subtask[] }
 export interface HqApi {
  read(): Promise<Workspace>;
  createRelease(projectId: number, version: string, dueDate: string | null): Promise<Workspace>;
- renameRelease(id: number, version: string, dueDate: string | null, published: boolean): Promise<Workspace>;
+ renameRelease(id: number, version: string, dueDate: string | null, status: ReleaseStatus): Promise<Workspace>;
  publishRelease(id: number): Promise<Workspace>;
  deleteRelease(id: number): Promise<Workspace>;
  saveProject(id: number | null, fields: ProjectFields): Promise<Workspace>;

@@ -343,7 +343,7 @@ test('legacy target versions migrate to project-specific planned releases only o
   const ra=w.releases.find(x=>x.projectId===a), rb=w.releases.find(x=>x.projectId===b);
   assert.equal(ra.version,'v0.4.0'); assert.equal(rb.version,'v0.4.0'); assert.equal(ra.published,false);
   assert.equal(w.tasks.find(x=>x.title==='Fix A').releaseId,ra.id); assert.equal(w.tasks.find(x=>x.title==='Feature A').releaseId,ra.id); assert.equal(w.tasks.find(x=>x.title==='Fix B').releaseId,rb.id);
-  const fix=w.tasks.find(x=>x.title==='Fix A'); db.saveTask(fix.id,{...fix,releaseId:null}); db.publishRelease(ra.id); db.close();
+  const fix=w.tasks.find(x=>x.title==='Fix A'); db.saveTask(fix.id,{...fix,releaseId:null}); db.completeTask(w.tasks.find(x=>x.title==='Feature A').id,true); db.publishRelease(ra.id); db.close();
   db=new PlannerDatabase(file); w=db.read(); assert.equal(w.releases.length,2); assert.equal(w.tasks.find(x=>x.id===fix.id).releaseId,null); assert.equal(w.releases.find(x=>x.id===ra.id).published,true); db.close();
 });
 
@@ -401,7 +401,7 @@ test('deleting a release preserves linked features and fixes, clears their assig
   db.saveTask(null,fields('Feature',{projectId:project,kind:'feature',releaseId:old,description:'bleibt'}));
   db.saveTask(null,fields('Fix',{projectId:project,kind:'fix',releaseId:old,criteria:[{id:null,text:'geprüft',completed:true}]}));
   db.saveTask(null,fields('Anderer Fix',{projectId:project,kind:'fix',releaseId:other}));
-  db.publishRelease(old);
+  db.completeTask(find(db,'Feature').id,true); db.publishRelease(old);
   const external=new DatabaseSync(file); external.exec("CREATE TRIGGER refuse_release_delete BEFORE DELETE ON releases BEGIN SELECT RAISE(ABORT, 'test failure'); END;"); external.close();
   assert.throws(()=>db.deleteRelease(old),/test failure/);
   assert.equal(find(db,'Feature').releaseId,old); assert.equal(find(db,'Fix').releaseId,old);
@@ -419,13 +419,46 @@ test('release status can be changed both ways without changing assigned entries'
   db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
   db.createRelease(project,'v1','2026-12-20'); const id=db.read().releases[0].id;
   db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:id}));
-  db.renameRelease(id,'v1','2026-12-20',true);
+  db.renameRelease(id,'v1','2026-12-20','published');
   assert.equal(db.read().releases[0].published,true);
   assert.throws(()=>db.saveTask(null,fields('Neues Feature',{kind:'feature',projectId:project,releaseId:id})),/geplantes Release/);
-  db.renameRelease(id,'v1','2026-12-20',false);
+  db.renameRelease(id,'v1','2026-12-20','planned');
   db.saveTask(null,fields('Neues Feature',{kind:'feature',projectId:project,releaseId:id}));
   assert.throws(()=>db.renameRelease(id,'v1',null,'invalid'),/Releasestatus/);
   db.close(); db=new PlannerDatabase(file);
   assert.equal(db.read().releases[0].published,false); assert.equal(db.read().tasks.filter(task=>task.releaseId===id).length,2);
   db.close();
+});
+
+test('release statuses persist and publication requires every assigned feature to be done', t => {
+  const file=tempDatabase(t); let db=new PlannerDatabase(file);
+  db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
+  db.createRelease(project,'v1'); db.createRelease(project,'v2'); const v1=db.read().releases.find(r=>r.version==='v1').id, v2=db.read().releases.find(r=>r.version==='v2').id;
+  db.saveTask(null,fields('Feature A',{kind:'feature',projectId:project,releaseId:v1}));
+  db.saveTask(null,fields('Feature B',{kind:'feature',projectId:project,releaseId:v1}));
+  db.saveTask(null,fields('Offener Fix',{kind:'fix',projectId:project,releaseId:v1}));
+  db.saveTask(null,fields('Späteres Feature',{kind:'feature',projectId:project,releaseId:v2}));
+  for (const state of ['in_progress','paused','planned']) { db.renameRelease(v1,'v1',null,state); assert.equal(db.read().releases.find(r=>r.id===v1).status,state); }
+  assert.throws(()=>db.publishRelease(v1),/alle zugehörigen Features/);
+  assert.throws(()=>db.renameRelease(v1,'v1-neu',null,'published'),/alle zugehörigen Features/);
+  assert.equal(db.read().releases.find(r=>r.id===v1).version,'v1');
+  db.completeTask(find(db,'Feature A').id,true); assert.throws(()=>db.publishRelease(v1),/alle zugehörigen Features/);
+  db.completeTask(find(db,'Feature B').id,true); db.publishRelease(v1);
+  db.renameRelease(v1,'v1.1',null,'published');
+  assert.equal(find(db,'Feature A').releaseId,v1); assert.equal(find(db,'Feature A').targetVersion,'v1.1'); assert.equal(find(db,'Feature B').targetVersion,'v1.1');
+  assert.equal(find(db,'Offener Fix').status,'planned'); db.close(); db=new PlannerDatabase(file);
+  assert.equal(db.read().releases.find(r=>r.id===v1).status,'published'); assert.equal(find(db,'Feature A').targetVersion,'v1.1');
+  db.renameRelease(v1,'v1.1',null,'in_progress'); db.close(); db=new PlannerDatabase(file);
+  assert.equal(db.read().releases.find(r=>r.id===v1).status,'in_progress'); assert.equal(db.read().releases.find(r=>r.id===v1).published,false); db.close();
+});
+
+test('legacy planned and published release statuses are migrated without changing links', t => {
+  const file=tempDatabase(t); let db=new PlannerDatabase(file);
+  db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
+  db.createRelease(project,'v1'); db.createRelease(project,'v2'); const v1=db.read().releases.find(r=>r.version==='v1').id;
+  db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:v1})); db.publishRelease(v1); db.close();
+  const old=new DatabaseSync(file); old.exec('ALTER TABLE releases DROP COLUMN status'); old.close();
+  db=new PlannerDatabase(file); const w=db.read();
+  assert.equal(w.releases.find(r=>r.id===v1).status,'published'); assert.equal(w.releases.find(r=>r.version==='v2').status,'planned');
+  assert.equal(w.tasks[0].releaseId,v1); assert.equal(w.tasks[0].targetVersion,'v1'); db.close();
 });
