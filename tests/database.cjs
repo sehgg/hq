@@ -308,3 +308,22 @@ test('fix migration preserves existing feature links, criteria and dependencies 
   db.deleteTask(fix); assert.equal(db.read().tasks.find(x=>x.id===2).featureId,null); db.close();
   old=new DatabaseSync(file); assert.equal(old.prepare('PRAGMA foreign_key_check').all().length,0); old.close();
 });
+
+test('a new process reloads fix details, checked criteria and linked task', t => {
+  const { spawnSync } = require('node:child_process');
+  const file = tempDatabase(t);
+  const db = new PlannerDatabase(file);
+  db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''});
+  const projectId=db.read().projects[0].id;
+  db.saveTask(null,fields('Fix',{kind:'fix',projectId,targetVersion:'v0.4.0',criteria:[{id:null,text:'Fehler ist behoben',completed:true}]}));
+  const fix=find(db,'Fix').id;
+  db.saveTask(null,fields('Fix testen',{projectId,featureId:fix}));
+  db.close();
+  const script = `const { PlannerDatabase } = require('./dist/database'); const db = new PlannerDatabase(process.argv[1]); const w = db.read(); console.log(JSON.stringify(w)); db.close();`;
+  const child=spawnSync(process.execPath,['-e',script,file],{cwd:process.cwd(),encoding:'utf8'});
+  assert.equal(child.status,0,child.stderr);
+  const workspace=JSON.parse(child.stdout); const restored=workspace.tasks.find(task=>task.id===fix);
+  assert.equal(restored.kind,'fix'); assert.equal(restored.targetVersion,'v0.4.0');
+  assert.equal(restored.criteria[0].text,'Fehler ist behoben'); assert.equal(restored.criteria[0].completed,true);
+  assert.equal(workspace.tasks.find(task=>task.title==='Fix testen').featureId,fix);
+});
