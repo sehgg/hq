@@ -11,10 +11,11 @@ export class PlannerDatabase {
  private readonly db: DatabaseSync;
  constructor(path: string) {
   this.db = new DatabaseSync(path, { enableForeignKeyConstraints: true });
+  this.db.exec('PRAGMA busy_timeout = 5000');
   this.db.exec(`CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, title TEXT NOT NULL CHECK (length(trim(title)) BETWEEN 1 AND 120), priority TEXT NOT NULL CHECK (priority IN ('low','normal','high'))) STRICT;
   CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL CHECK (length(trim(title)) BETWEEN 1 AND 120), priority TEXT NOT NULL CHECK (priority IN ('low','normal','high')), project_id INTEGER REFERENCES projects(id), completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0,1))) STRICT;`);
   this.db.exec('PRAGMA foreign_keys = OFF');
-  this.db.exec('BEGIN');
+  this.db.exec('BEGIN IMMEDIATE');
   try {
    const columns = (table: string) => new Set((this.db.prepare(`PRAGMA table_info(${table})`).all() as unknown as {name:string}[]).map(c => c.name));
    const pc = columns('projects'); const tc = columns('tasks');
@@ -71,19 +72,35 @@ export class PlannerDatabase {
    this.db.exec(`CREATE TABLE IF NOT EXISTS subtasks (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, title TEXT NOT NULL CHECK (length(trim(title)) BETWEEN 1 AND 120), completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0,1))) STRICT;
    CREATE TABLE IF NOT EXISTS acceptance_criteria (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, text TEXT NOT NULL CHECK (length(trim(text)) BETWEEN 1 AND 1000), completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0,1)), position INTEGER NOT NULL) STRICT;
    CREATE TABLE IF NOT EXISTS task_dependencies (predecessor_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, successor_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, PRIMARY KEY (predecessor_id, successor_id), CHECK (predecessor_id != successor_id)) STRICT;`);
+   this.db.exec('CREATE TABLE IF NOT EXISTS workspace_revision (id INTEGER PRIMARY KEY CHECK (id=1), revision INTEGER NOT NULL) STRICT; INSERT OR IGNORE INTO workspace_revision VALUES (1,0)');
+   for (const table of ['projects','tasks','releases','subtasks','acceptance_criteria','task_dependencies']) for (const action of ['INSERT','UPDATE','DELETE']) this.db.exec(`CREATE TRIGGER IF NOT EXISTS revision_${table}_${action.toLowerCase()} AFTER ${action} ON ${table} BEGIN UPDATE workspace_revision SET revision=revision+1 WHERE id=1; END`);
    if (this.db.prepare('PRAGMA foreign_key_check').get()) throw new Error('Die Datenbank enthält ungültige Verknüpfungen.');
    this.db.exec('COMMIT');
   } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   finally { this.db.exec('PRAGMA foreign_keys = ON'); }
  }
  read(): Workspace {
+  this.db.exec('SAVEPOINT workspace_read');
+  try {
+  const revision = (this.db.prepare('SELECT revision FROM workspace_revision WHERE id=1').get() as {revision:number}).revision;
   const projects = this.db.prepare(`SELECT id, title, priority, description, kind, due_date AS dueDate FROM projects ORDER BY ${byPriority}, id DESC`).all() as unknown as Project[];
   const releases = this.db.prepare('SELECT id, project_id AS projectId, version, due_date AS dueDate, status, published FROM releases ORDER BY id DESC').all() as unknown as Array<Omit<Release,'published'> & {published:number}>;
   const rows = this.db.prepare(`SELECT t.id, t.title, t.priority, t.description, t.kind, t.feature_id AS featureId, t.release_id AS releaseId, r.version AS targetVersion, t.project_id AS projectId, t.due_date AS dueDate, t.status, t.completed FROM tasks t LEFT JOIN releases r ON r.id=t.release_id ORDER BY t.due_date IS NULL, t.due_date ASC, CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, t.id DESC`).all() as unknown as Array<Omit<Task,'completed'|'predecessorIds'|'successorIds'|'criteria'> & {completed:number}>;
   const edges = this.db.prepare('SELECT predecessor_id AS predecessorId, successor_id AS successorId FROM task_dependencies').all() as unknown as {predecessorId:number; successorId:number}[];
   const criteria = this.db.prepare('SELECT id, task_id AS taskId, text, completed FROM acceptance_criteria ORDER BY position, id').all() as unknown as {id:number; taskId:number; text:string; completed:number}[];
   const subs = this.db.prepare('SELECT id, task_id AS taskId, title, completed FROM subtasks ORDER BY id').all() as unknown as Array<Omit<Subtask,'completed'> & {completed:number}>;
-  return { releases: releases.map(r => ({...r, published: !!r.published})), projects, tasks: rows.map(row => ({...row, completed: !!row.completed, criteria: criteria.filter(c => c.taskId === row.id).map(c => ({id:c.id, text:c.text, completed:!!c.completed})), predecessorIds: edges.filter(e => e.successorId === row.id).map(e => e.predecessorId), successorIds: edges.filter(e => e.predecessorId === row.id).map(e => e.successorId)})), subtasks: subs.map(s => ({...s, completed: !!s.completed})) };
+  const workspace = { revision, releases: releases.map(r => ({...r, published: !!r.published})), projects, tasks: rows.map(row => ({...row, completed: !!row.completed, criteria: criteria.filter(c => c.taskId === row.id).map(c => ({id:c.id, text:c.text, completed:!!c.completed})), predecessorIds: edges.filter(e => e.successorId === row.id).map(e => e.predecessorId), successorIds: edges.filter(e => e.predecessorId === row.id).map(e => e.successorId)})), subtasks: subs.map(s => ({...s, completed: !!s.completed})) };
+  this.db.exec('RELEASE workspace_read'); return workspace;
+  } catch (error) { this.db.exec('ROLLBACK TO workspace_read; RELEASE workspace_read'); throw error; }
+ }
+ mutate<T>(expectedRevision: number, operation: () => T): T {
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new Error('Der Datenstand ist ungültig.');
+  this.db.exec('BEGIN IMMEDIATE');
+  try {
+   const revision = (this.db.prepare('SELECT revision FROM workspace_revision WHERE id=1').get() as {revision:number}).revision;
+   if (revision !== expectedRevision) throw new Error('Der Arbeitsbereich wurde zwischenzeitlich geändert. Bitte neu laden und erneut versuchen.');
+   const result = operation(); this.db.exec('COMMIT'); return result;
+  } catch (error) { this.db.exec('ROLLBACK'); throw error; }
  }
  saveProject(id: number | null, fields: ProjectFields): void {
   if (fields.kind !== 'normal' && fields.kind !== 'software') throw new Error('Der Projekttyp ist ungültig.');
@@ -91,7 +108,7 @@ export class PlannerDatabase {
   const args = [title(fields.title), priority(fields.priority), description(fields.description), fields.kind, deadline] as const;
   if (id === null) { this.db.prepare('INSERT INTO projects (title, priority, description, kind, due_date) VALUES (?, ?, ?, ?, ?)').run(...args); return; }
   identifier(id);
-  this.db.exec('BEGIN IMMEDIATE');
+  this.db.exec('SAVEPOINT hq_operation');
   try {
    if (fields.kind === 'normal' && (this.db.prepare("SELECT 1 FROM tasks WHERE project_id=? AND kind IN ('feature','fix')").get(id) || this.db.prepare('SELECT 1 FROM releases WHERE project_id=?').get(id))) throw new Error('Verschiebe zuerst die Features und Fixes in ein anderes Softwareprojekt.');
    if (deadline !== null) {
@@ -99,8 +116,8 @@ export class PlannerDatabase {
     if (conflicts.length) throw new Error('Diese Einträge liegen nach der Projektfrist: ' + conflicts.map(item => `${item.title} (${item.dueDate.split('-').reverse().join('.')})`).join('; '));
    }
    if (!this.db.prepare('UPDATE projects SET title=?, priority=?, description=?, kind=?, due_date=? WHERE id=?').run(...args, id).changes) throw new Error('Das Projekt wurde nicht gefunden.');
-   this.db.exec('COMMIT');
-  } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+   this.db.exec('RELEASE hq_operation');
+  } catch (error) { this.db.exec('ROLLBACK TO hq_operation; RELEASE hq_operation'); throw error; }
  }
  createRelease(projectId: number, version: string, dueDate: string | null = null): void {
   identifier(projectId); const name = title(version); const date = validDate(dueDate);
@@ -120,13 +137,13 @@ export class PlannerDatabase {
  }
  deleteRelease(id: number): void {
   identifier(id);
-  this.db.exec('BEGIN');
+  this.db.exec('SAVEPOINT hq_operation');
   try {
    if (!this.db.prepare('SELECT 1 FROM releases WHERE id=?').get(id)) throw new Error('Das Release wurde nicht gefunden.');
    this.db.prepare('UPDATE tasks SET release_id=NULL, target_version=NULL WHERE release_id=?').run(id);
    this.db.prepare('DELETE FROM releases WHERE id=?').run(id);
-   this.db.exec('COMMIT');
-  } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+   this.db.exec('RELEASE hq_operation');
+  } catch (error) { this.db.exec('ROLLBACK TO hq_operation; RELEASE hq_operation'); throw error; }
  }
  private ensureReleaseCanPublish(id: number): void {
   const open = this.db.prepare("SELECT title, kind FROM tasks WHERE release_id=? AND status<>'done' ORDER BY id").all(id) as unknown as {title:string; kind:string}[];
@@ -167,7 +184,7 @@ export class PlannerDatabase {
   const due=validDate(fields.dueDate);
   if (!Array.isArray(fields.predecessorIds)) throw new Error('Die Vorgänger sind ungültig.');
   const predecessors = [...new Set(fields.predecessorIds.map(identifier))];
-  this.db.exec('BEGIN IMMEDIATE');
+  this.db.exec('SAVEPOINT hq_operation');
   try {
    if (projectId !== null && due !== null) {
     const project = this.db.prepare('SELECT due_date AS dueDate FROM projects WHERE id=?').get(projectId) as {dueDate:string | null} | undefined;
@@ -190,12 +207,12 @@ export class PlannerDatabase {
    this.db.prepare('DELETE FROM acceptance_criteria WHERE task_id=?').run(taskId);
    for (const [position, criterion] of criteria.entries()) if (criterion.id !== null) this.db.prepare('INSERT INTO acceptance_criteria (id,task_id,text,completed,position) VALUES (?,?,?,?,?)').run(criterion.id,taskId,criterion.text,Number(criterion.completed),position);
    for (const [position, criterion] of criteria.entries()) if (criterion.id === null) this.db.prepare('INSERT INTO acceptance_criteria (task_id,text,completed,position) VALUES (?,?,?,?)').run(taskId,criterion.text,Number(criterion.completed),position);
-   this.db.exec('COMMIT');
-  } catch(error) { this.db.exec('ROLLBACK'); throw error; }
+   this.db.exec('RELEASE hq_operation');
+  } catch(error) { this.db.exec('ROLLBACK TO hq_operation; RELEASE hq_operation'); throw error; }
  }
  deleteTask(id: number): void {
   identifier(id);
-  this.db.exec('BEGIN');
+  this.db.exec('SAVEPOINT hq_operation');
   try {
    if (!this.db.prepare('SELECT 1 FROM tasks WHERE id=?').get(id)) throw new Error('Der Eintrag wurde nicht gefunden.');
    this.db.prepare('UPDATE tasks SET feature_id=NULL WHERE feature_id=?').run(id);
@@ -203,8 +220,8 @@ export class PlannerDatabase {
    this.db.prepare('DELETE FROM subtasks WHERE task_id=?').run(id);
    this.db.prepare('DELETE FROM acceptance_criteria WHERE task_id=?').run(id);
    this.db.prepare('DELETE FROM tasks WHERE id=?').run(id);
-   this.db.exec('COMMIT');
-  } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+   this.db.exec('RELEASE hq_operation');
+  } catch (error) { this.db.exec('ROLLBACK TO hq_operation; RELEASE hq_operation'); throw error; }
  }
  assignFeature(taskId: number, featureId: number | null): void {
   identifier(taskId);

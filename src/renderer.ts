@@ -161,7 +161,7 @@ window.addEventListener('resize', () => { syncSidebarResize(); syncDetailsResize
 syncSidebarResize();
 
 const priorityNames: Record<Priority, string> = { high: 'Hoch', normal: 'Normal', low: 'Niedrig' };
-let workspace: Workspace = { projects: [], tasks: [], subtasks: [], releases: [] };
+let workspace: Workspace = { revision: 0, projects: [], tasks: [], subtasks: [], releases: [] };
 let view: View = 'inbox';
 let activeTab: TaskKind | 'releases' = 'task';
 let pendingReleaseId: number | null = null;
@@ -402,7 +402,7 @@ releaseForm.addEventListener('submit', async event => {
   if (saving || typeof view !== 'number') return;
   const id = editingReleaseId;
   saving = true; saveRelease.disabled = true; releaseError.hidden = true;
-  try { workspace = id === null ? await window.hq.createRelease(view, releaseVersion.value, releaseDue.value || null) : await window.hq.renameRelease(id, releaseVersion.value, releaseDue.value || null, releaseStatus.value as ReleaseStatus); releaseDialog.close(); render(); announce(id === null ? 'Release angelegt.' : 'Release gespeichert.'); }
+  try { workspace = id === null ? await window.hq.createRelease(view, releaseVersion.value, releaseDue.value || null, workspace.revision) : await window.hq.renameRelease(id, releaseVersion.value, releaseDue.value || null, releaseStatus.value as ReleaseStatus, workspace.revision); releaseDialog.close(); render(); announce(id === null ? 'Release angelegt.' : 'Release gespeichert.'); }
   catch (error) { releaseError.textContent = errorMessage(error); releaseError.hidden = false; }
   finally { saving = false; saveRelease.disabled = false; }
 });
@@ -420,7 +420,7 @@ publishDialog.addEventListener('cancel', event => { if (saving) event.preventDef
 confirmPublish.addEventListener('click', async () => {
   if (saving || pendingReleaseId === null) return;
   saving = true; confirmPublish.disabled = true; publishError.hidden = true;
-  try { workspace = await window.hq.publishRelease(pendingReleaseId); publishDialog.close(); pendingReleaseId = null; render(); announce('Release veröffentlicht.'); }
+  try { workspace = await window.hq.publishRelease(pendingReleaseId, workspace.revision); publishDialog.close(); pendingReleaseId = null; render(); announce('Release veröffentlicht.'); }
   catch (error) { publishError.textContent = errorMessage(error); publishError.hidden = false; }
   finally { saving = false; confirmPublish.disabled = false; }
 });
@@ -441,7 +441,7 @@ confirmDeleteRelease.addEventListener('click', async () => {
   if (saving || pendingDeleteReleaseId === null) return;
   saving = true; confirmDeleteRelease.disabled = true; cancelDeleteRelease.disabled = true; deleteReleaseError.hidden = true;
   try {
-    workspace = await window.hq.deleteRelease(pendingDeleteReleaseId);
+    workspace = await window.hq.deleteRelease(pendingDeleteReleaseId, workspace.revision);
     pendingDeleteReleaseId = null; selectedReleaseId = null;
     deleteReleaseDialog.close(); render();
     content.querySelector('h1')?.focus({ preventScroll: true });
@@ -551,7 +551,7 @@ details.addEventListener('submit', async event => {
   event.preventDefault();
   const input = document.querySelector<HTMLInputElement>('#subtask-title')!;
   saving = true;
-  try { workspace = await window.hq.addSubtask(selectedTaskId, input.value); render(); document.querySelector<HTMLInputElement>('#subtask-title')?.focus(); }
+  try { workspace = await window.hq.addSubtask(selectedTaskId, input.value, workspace.revision); render(); document.querySelector<HTMLInputElement>('#subtask-title')?.focus(); }
   catch (error) { announce(errorMessage(error), true); }
   finally { saving = false; }
 });
@@ -578,7 +578,7 @@ confirmDelete.addEventListener('click', async () => {
   cancelDelete.disabled = true;
   deleteError.hidden = true;
   try {
-    workspace = await window.hq.deleteTask(task.id);
+    workspace = await window.hq.deleteTask(task.id, workspace.revision);
     selectedTaskId = null;
     deleteDialog.close();
     render();
@@ -716,7 +716,7 @@ assignFeatureTask.addEventListener('click', async () => {
   saving = true;
   assignFeatureTask.disabled = true;
   featureTaskError.hidden = true;
-  try { workspace = await window.hq.assignFeature(Number(existingFeatureTask.value), selectedTaskId); featureTaskDialog.close(); render(); announce('Aufgabe zugeordnet.'); }
+  try { workspace = await window.hq.assignFeature(Number(existingFeatureTask.value), selectedTaskId, workspace.revision); featureTaskDialog.close(); render(); announce('Aufgabe zugeordnet.'); }
   catch (error) { featureTaskError.textContent = errorMessage(error); featureTaskError.hidden = false; }
   finally { saving = false; assignFeatureTask.disabled = !existingFeatureTask.value; }
 });
@@ -823,7 +823,7 @@ document.addEventListener('change', async event => {
     if (saving) { renderDetails(); return; }
     saving = true;
     checkbox.disabled = true;
-    try { workspace = await window.hq.assignFeature(taskId, checkbox.value ? Number(checkbox.value) : null); render(); announce('Zuordnung gespeichert.'); }
+    try { workspace = await window.hq.assignFeature(taskId, checkbox.value ? Number(checkbox.value) : null, workspace.revision); render(); announce('Zuordnung gespeichert.'); }
     catch (error) { renderDetails(); announce(errorMessage(error), true); }
     finally { saving = false; checkbox.disabled = false; }
     return;
@@ -834,7 +834,7 @@ document.addEventListener('change', async event => {
     if (saving) { checkbox.checked = !checked; return; }
     saving = true;
     checkbox.disabled = true;
-    try { workspace = await window.hq.completeCriterion(Number(checkbox.dataset.criterion), checked); render(); }
+    try { workspace = await window.hq.completeCriterion(Number(checkbox.dataset.criterion), checked, workspace.revision); render(); }
     catch (error) { checkbox.checked = !checked; announce(errorMessage(error), true); }
     finally { checkbox.disabled = false; saving = false; }
     return;
@@ -844,7 +844,7 @@ document.addEventListener('change', async event => {
     if (saving) { checkbox.checked = !checked; return; }
     saving = true;
     checkbox.disabled = true;
-    try { workspace = await window.hq.completeSubtask(Number(checkbox.dataset.subtask), checked); render(); }
+    try { workspace = await window.hq.completeSubtask(Number(checkbox.dataset.subtask), checked, workspace.revision); render(); }
     catch (error) { checkbox.checked = !checked; announce(errorMessage(error), true); }
     finally { checkbox.disabled = false; saving = false; }
     return;
@@ -860,7 +860,7 @@ document.addEventListener('change', async event => {
   saving = true;
   checkbox.disabled = true;
   try {
-    workspace = await window.hq.completeTask(id, completed);
+    workspace = await window.hq.completeTask(id, completed, workspace.revision);
     render();
     content.querySelector<HTMLInputElement>(`[data-complete="${id}"]`)?.focus({ preventScroll: true });
     announce(completed ? 'Aufgabe erledigt.' : 'Aufgabe wieder geöffnet.');
@@ -915,14 +915,14 @@ form.addEventListener('submit', async event => {
   try {
     if (mode.kind === 'project') {
       const previousIds = new Set(workspace.projects.map(project => project.id));
-      workspace = await window.hq.saveProject(mode.id, { ...fields, kind: projectKindField.value as ProjectKind, dueDate: projectDueField.value || null });
+      workspace = await window.hq.saveProject(mode.id, { ...fields, kind: projectKindField.value as ProjectKind, dueDate: projectDueField.value || null }, workspace.revision);
       editing = null;
       editor.close();
       const newProject = workspace.projects.find(project => !previousIds.has(project.id));
       showView(newProject?.id ?? view);
       announce(mode.id === null ? 'Projekt angelegt.' : 'Projekt gespeichert.');
     } else {
-      workspace = await window.hq.saveTask(mode.id, { ...fields, kind: editorTaskKind, featureId: editorTaskKind === 'task' && taskFeatureField.value ? Number(taskFeatureField.value) : null, releaseId: targetVersionField.value === 'keep-published' ? editorPublishedReleaseId : targetVersionField.value ? Number(targetVersionField.value) : null, criteria: editorTaskKind !== 'task' ? draftCriteria : [], projectId, dueDate: dueField.value || null, status: statusField.value as TaskStatus, predecessorIds: [...selectedPredecessors] });
+      workspace = await window.hq.saveTask(mode.id, { ...fields, kind: editorTaskKind, featureId: editorTaskKind === 'task' && taskFeatureField.value ? Number(taskFeatureField.value) : null, releaseId: targetVersionField.value === 'keep-published' ? editorPublishedReleaseId : targetVersionField.value ? Number(targetVersionField.value) : null, criteria: editorTaskKind !== 'task' ? draftCriteria : [], projectId, dueDate: dueField.value || null, status: statusField.value as TaskStatus, predecessorIds: [...selectedPredecessors] }, workspace.revision);
       editing = null;
       editor.close();
       render();
@@ -948,3 +948,15 @@ void window.hq.read().then(data => {
 }).finally(() => {
   main.setAttribute('aria-busy', 'false');
 });
+
+// Do not replace a draft or a newer local result with a concurrent read.
+function canRefreshWorkspace(): boolean {
+  const active = document.activeElement;
+  return !saving && !document.querySelector('dialog[open]') && !(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement);
+}
+window.setInterval(() => {
+  if (!canRefreshWorkspace()) return;
+  void window.hq.read().then(data => {
+    if (canRefreshWorkspace() && data.revision > workspace.revision) { workspace = data; render(); }
+  }).catch(() => {});
+}, 2000);

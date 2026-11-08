@@ -19,16 +19,29 @@ function renderer(hq = { read: () => new Promise(() => {}) }) {
   }
   const nodes = new Map();
   const handlers = {};
-  const document = { body:new Element(), querySelector(selector) { if (!nodes.has(selector)) nodes.set(selector, new Element()); return nodes.get(selector); }, addEventListener(type, handler) { (handlers[type] ??= []).push(handler); } };
+  let tick;
+  const document = { body:new Element(), activeElement:null, openDialog:false, querySelector(selector) { if (selector==='dialog[open]') return this.openDialog ? {} : null; if (!nodes.has(selector)) nodes.set(selector, new Element()); return nodes.get(selector); }, addEventListener(type, handler) { (handlers[type] ??= []).push(handler); } };
   const click = (action, id) => { const target = new Element(); target.dataset.action = action; if (id !== undefined) target.dataset.id = String(id); for (const handler of handlers.click ?? []) handler({ target }); };
   class Option { constructor(text, value) { this.text = text; this.value = value; } }
-  const context = { document, Option, Element, HTMLInputElement: Element, HTMLSelectElement: Element, HTMLFormElement: Element, getComputedStyle: element => ({getPropertyValue: name => element.style.properties[name] ?? '226px'}), window: { hq, clearTimeout() {}, setTimeout() { return 0; }, addEventListener() {} }, console };
+  const context = { document, Option, Element, HTMLInputElement: Element, HTMLTextAreaElement:Element, HTMLSelectElement: Element, HTMLFormElement: Element, getComputedStyle: element => ({getPropertyValue: name => element.style.properties[name] ?? '226px'}), window: { hq, clearTimeout() {}, setTimeout() { return 0; }, addEventListener() {}, setInterval(callback) { tick=callback; } }, console };
   vm.createContext(context);
-  vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, orderTaskTree, openEditor, openDeleteDialog, openFeatureTaskDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = { releases: [], ...value }; }, selected: () => [...selectedPredecessors] };`, context);
+  vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, orderTaskTree, openEditor, openDeleteDialog, openFeatureTaskDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = { releases: [], ...value }; }, getWorkspace: () => workspace, selected: () => [...selectedPredecessors] };`, context);
   const change = async target => { for (const handler of handlers.change ?? []) await handler({target}); };
-  return { api: context.testApi, node: selector => document.querySelector(selector), click, change };
+  return { api: context.testApi, node: selector => document.querySelector(selector), click, change, tick: () => tick(), document };
 }
 const task = (id, title, projectId, overrides = {}) => ({ id, title, projectId, priority:'normal', description:'', kind:'task', featureId:null, releaseId:null, targetVersion:null, criteria:[], dueDate:null, status:'planned', completed:false, predecessorIds:[], successorIds:[], ...overrides });
+
+test('background reads refresh external changes but do not interrupt a text draft or replace a newer state', async () => {
+  let current={revision:1,projects:[],tasks:[],subtasks:[],releases:[]};
+  const {api,node,tick,document}=renderer({read:async()=>current});
+  await new Promise(resolve=>setImmediate(resolve));
+  current={...current,revision:2,tasks:[task(1,'Extern',null)]}; tick(); await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(api.getWorkspace().revision,2); assert.match(node('#content').innerHTML,/Extern/);
+  document.activeElement=node('#subtask-title'); current={...current,revision:3}; tick(); await new Promise(resolve=>setImmediate(resolve)); assert.equal(api.getWorkspace().revision,2);
+  document.activeElement=null; tick(); await new Promise(resolve=>setImmediate(resolve)); assert.equal(api.getWorkspace().revision,3);
+  document.openDialog=true; current={...current,revision:4}; tick(); await new Promise(resolve=>setImmediate(resolve)); assert.equal(api.getWorkspace().revision,3); document.openDialog=false;
+  current={...current,revision:2}; tick(); await new Promise(resolve=>setImmediate(resolve)); assert.equal(api.getWorkspace().revision,3);
+});
 
 test('sidebar resize tracks pointer movement, respects the current minimum and supports keyboard input', () => {
   const {node} = renderer(); const handle=node('#sidebar-resize'), shell=node('.shell'), sidebar=node('#sidebar');
