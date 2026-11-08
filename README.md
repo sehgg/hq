@@ -33,7 +33,7 @@ The **Ideen** and **Recherche** navigation entries are placeholders for sections
 
 ## Sidebar width
 
-Drag the divider at the right edge of the sidebar to adjust its width. The original width at the current window size is the minimum. The focused divider also supports the left and right arrow keys.
+Drag the dividers at the edges of the navigation and details sidebars to adjust their widths. Each sidebar's original width at the current window size is its minimum. The focused dividers also support the left and right arrow keys.
 
 ## Planning releases
 

@@ -43,6 +43,20 @@ test('sidebar resize tracks pointer movement, respects the current minimum and s
   assert.equal(handle.attributes['aria-valuemin'],'190');
 });
 
+test('details divider resizes in the opposite direction and follows the details panel', () => {
+  const {api,node} = renderer(); const handle=node('#details-resize'), shell=node('.shell'), details=node('#details'), sidebar=node('#sidebar');
+  shell.width=1160; shell.style.properties['--details-min']='320px'; sidebar.width=226; details.width=320;
+  api.setWorkspace({projects:[],tasks:[task(1,'Eintrag',null)],subtasks:[]}); api.selectTask(1); assert.equal(handle.hidden,false);
+  const pointer=(clientX,pointerId=1)=>({button:0,clientX,pointerId,preventDefault(){}});
+  handle.dispatch('pointerdown',pointer(840)); assert.equal(handle.capturedPointer,1);
+  handle.dispatch('pointermove',pointer(740)); assert.equal(shell.style.properties['--details-width'],'420px');
+  handle.dispatch('pointermove',pointer(940)); assert.equal(shell.style.properties['--details-width'],'320px');
+  handle.dispatch('pointerup',pointer(940)); assert.equal(handle.capturedPointer,null);
+  details.width=400; handle.dispatch('keydown',{key:'ArrowLeft',preventDefault(){}}); assert.equal(shell.style.properties['--details-width'],'410px');
+  handle.dispatch('keydown',{key:'ArrowRight',preventDefault(){}}); assert.equal(shell.style.properties['--details-width'],'390px');
+  assert.equal(handle.attributes['aria-valuemin'],'320'); api.selectTask(null); assert.equal(handle.hidden,true);
+});
+
 test('task rows expose every status and mark cross-project dependencies without changing the title', () => {
   const { api } = renderer();
   for (const [status, label] of [['planned','Geplant'], ['in_progress','In Arbeit'], ['paused','Pausiert'], ['done','Erledigt']]) {

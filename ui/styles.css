@@ -47,7 +47,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .window-title { color: var(--muted); font-size: 11px; letter-spacing: .04em; }
 
-.shell { --sidebar-min: 226px; --sidebar-space: 240px; display: grid; grid-template-columns: clamp(var(--sidebar-min), var(--sidebar-width, var(--sidebar-min)), max(var(--sidebar-min), calc(100% - var(--sidebar-space)))) minmax(0, 1fr); min-height: 0; }
+.shell { --sidebar-min: 226px; --sidebar-space: 240px; position: relative; display: grid; grid-template-columns: clamp(var(--sidebar-min), var(--sidebar-width, var(--sidebar-min)), max(var(--sidebar-min), calc(100% - var(--sidebar-space)))) minmax(0, 1fr); min-height: 0; }
 .sidebar {
   position: relative;
   min-width: 0;
@@ -59,6 +59,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .sidebar-resize { position: absolute; z-index: 2; top: 0; right: -4px; bottom: 0; width: 8px; cursor: col-resize; touch-action: none; }
 .sidebar-resize:hover, .sidebar-resize:focus-visible { background: var(--accent-secondary); outline: none; }
+.details-resize { position: absolute; z-index: 3; top: 0; right: calc(var(--details-size) - 4px); bottom: 0; width: 8px; cursor: col-resize; touch-action: none; }
+.details-resize:hover, .details-resize:focus-visible { background: var(--accent-secondary); outline: none; }
 body.resizing-sidebar, body.resizing-sidebar * { cursor: col-resize; user-select: none; }
 .brand {
   display: flex;
@@ -379,7 +381,7 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
   .page-head { flex-direction: column; }
   .stat { padding-inline: 8px; }
 }
-.shell.with-details { --sidebar-space: 420px; grid-template-columns: clamp(var(--sidebar-min), var(--sidebar-width, var(--sidebar-min)), max(var(--sidebar-min), calc(100% - var(--sidebar-space)))) minmax(0, 1fr) minmax(260px, 320px); }
+.shell.with-details { --details-min: 320px; --details-size: clamp(var(--details-min), var(--details-width, var(--details-min)), max(var(--details-min), calc(100% - var(--sidebar-min) - 160px))); --sidebar-space: calc(var(--details-size) + 160px); grid-template-columns: clamp(var(--sidebar-min), var(--sidebar-width, var(--sidebar-min)), max(var(--sidebar-min), calc(100% - var(--sidebar-space)))) minmax(0, 1fr) var(--details-size); }
 .details { min-width: 0; overflow: auto; border-left: 1px solid var(--border); background: var(--rail); }
 .details-header { display: flex; justify-content: space-between; gap: 8px; padding: 18px 14px; border-bottom: 1px solid var(--border); }
 .details-header h2 { overflow-wrap: anywhere; font-size: 16px; }
@@ -403,8 +405,8 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
 .dependency-option { display: block; font-size: 12px; margin: 3px 0; overflow-wrap: anywhere; }
 .muted { color: var(--muted); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
-@media (max-width: 900px) { .shell.with-details { --sidebar-min: 160px; grid-template-columns: clamp(var(--sidebar-min), var(--sidebar-width, var(--sidebar-min)), max(var(--sidebar-min), calc(100% - var(--sidebar-space)))) minmax(0, 1fr) 260px; } .shell.with-details .content { padding-inline: 12px; } }
-@media (max-width: 720px) { .shell.with-details { --sidebar-space: 240px; grid-template-columns: clamp(var(--sidebar-min), var(--sidebar-width, var(--sidebar-min)), max(var(--sidebar-min), calc(100% - var(--sidebar-space)))) minmax(0, 1fr); } .shell.with-details .details { position: absolute; right: 0; top: 43px; bottom: 30px; width: min(320px, calc(100vw - clamp(var(--sidebar-min), var(--sidebar-width, var(--sidebar-min)), max(var(--sidebar-min), calc(100% - var(--sidebar-space)))))); box-shadow: -8px 0 20px #0008; } }
+@media (max-width: 900px) { .shell.with-details { --sidebar-min: 160px; --details-min: 260px; } .shell.with-details .content { padding-inline: 12px; } }
+@media (max-width: 720px) { .shell.with-details { --details-min: 320px; } }
 /* Keep the action group intact even when a long title needs several lines. */
 .details-heading { flex: 1 1 0; min-width: 0; }
 .details-actions { display: flex; flex: 0 0 auto; align-items: flex-start; white-space: nowrap; }
