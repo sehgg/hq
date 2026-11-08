@@ -1,23 +1,49 @@
 # HQ
 
-Ein lokaler Projektplaner für Projekte, Prioritäten und lose Aufgaben.
+HQ is a local desktop planner for projects, priorities, and tasks. It keeps projects, tasks, features, fixes, releases, and their relationships in a SQLite database on your computer. The desktop interface is in German; the local CLI offers a scriptable interface for people and agents.
 
-## Start im Entwicklungsmodus
+## Get started
+
+Install Node.js 24 or later and the repository dependencies, subject to the project rule on approval for external dependencies. From the repository root:
 
 ```sh
 npm ci
 npm start
 ```
 
-## Eigenständige Mac-App bauen
+`npm start` compiles TypeScript and launches Electron. To build a standalone desktop app for the current platform and architecture, run:
 
 ```sh
 npm run package
 ```
 
-Auf einem Apple-Silicon-Mac entsteht `out/HQ-darwin-arm64/HQ.app`. Die App lässt sich per Doppelklick öffnen oder nach **Programme** ziehen. Auf einem Intel-Mac heißt der Ausgabeordner `HQ-darwin-x64`. Auf einem Windows-Rechner erzeugt derselbe Befehl einen Windows-Build mit `HQ.exe`.
+On Apple Silicon the app is `out/HQ-darwin-arm64/HQ.app`; on Intel macOS it is `out/HQ-darwin-x64/HQ.app`. A Windows build contains `HQ.exe` in the corresponding `out/HQ-win32-<arch>` directory. Data is stored separately from the application: `~/Library/Application Support/HQ/hq.sqlite` on macOS and `%APPDATA%\HQ\hq.sqlite` on Windows.
 
-Die Daten liegen getrennt von der App im Benutzerprofil. Auf macOS ist die Datenbank `~/Library/Application Support/HQ/hq.sqlite`.
+## A typical desktop workflow
+
+1. Select **Projekte** and use **[ + ]** to create a project. Choose a normal or software project, and optionally add a description and deadline.
+2. Open the project and use **[ + ]** in **Aufgaben** to create a task. Add its description, status, due date, and predecessors in the editor. Tasks can also be created in **Posteingang** before assigning them to a project.
+3. Select the task to open its details on the right. Use **[ B ]** to edit it and add or check subtasks in the details. A task cannot be completed while a subtask or predecessor remains open.
+4. In a software project, use the **Features**, **Fixes**, and **Releases** tabs to plan work. Assign an entry to a release in its editor. A release can be published once all its assigned tasks, features, and fixes are done.
+
+The numbers beside project names and **Posteingang** count open entries. **Ideen** and **Recherche** are placeholders. Drag either sidebar divider to change its width; the focused divider also accepts the arrow keys.
+
+## A typical CLI workflow
+
+After building the CLI as described below, put the resulting `hq` executable (`hq.exe` on Windows) on your `PATH`, or invoke it by its output path. The following example reads a project, creates a task, updates it, and marks it done. Use a project that exists in your own database and substitute the ID returned by `create`:
+
+```sh
+hq projects --json
+hq tasks --project "My project" --json
+hq create --project "My project" --title "Review export" --json
+hq edit --id 12 --status in_progress
+hq done --id 12
+hq show --id 12 --json
+```
+
+The task must have no open predecessors or subtasks before `done` succeeds. For a separate test database, pass `--db PATH` to each command; the file must already exist. See [Local CLI for agents](#local-cli-for-agents) for installation, search, status values, and errors.
+
+For implementation details, see [Architecture](docs/ARCHITECTURE.md); for development and checks, see [Contributing](CONTRIBUTING.md). HQ is available under the [MIT license](LICENSE).
 
 ## Deleting entries
 
@@ -26,14 +52,6 @@ Open a task, feature, or fix and choose **Löschen** in the details panel. Confi
 ## Linking tasks to features and fixes
 
 In a software project's feature or fix details, use **Zugehörige Aufgaben** to create or assign tasks from the same project. Task details let you open, change, or clear the associated feature or fix. Assignments do not change either entry's status or create a predecessor relationship.
-
-## Upcoming sections
-
-The **Ideen** and **Recherche** navigation entries are placeholders for sections still in development.
-
-## Sidebar width
-
-Drag the dividers at the edges of the navigation and details sidebars to adjust their widths. Each sidebar's original width at the current window size is its minimum. The focused dividers also support the left and right arrow keys.
 
 ## Planning releases
 
