@@ -8,6 +8,7 @@ const api: HqApi = {
   completeTask: (id, completed) => ipcRenderer.invoke('task:complete', id, completed),
   addSubtask: (id, title) => ipcRenderer.invoke('subtask:add', id, title),
   completeSubtask: (id, completed) => ipcRenderer.invoke('subtask:complete', id, completed),
+  completeCriterion: (id, completed) => ipcRenderer.invoke('criterion:complete', id, completed),
 };
 
 contextBridge.exposeInMainWorld('hq', api);

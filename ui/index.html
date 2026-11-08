@@ -55,7 +55,12 @@
           <span>Name</span>
           <input id="entry-title" name="title" type="text" required maxlength="120" autocomplete="off" autofocus>
         </label>
-        <label class="field extra-field"><span>Beschreibung</span><textarea id="entry-description" rows="3" maxlength="10000"></textarea></label>
+        <label class="field extra-field" id="project-kind-field"><span>Projekttyp</span><select id="entry-project-kind"><option value="normal">Normales Projekt</option><option value="software">Softwareprojekt</option></select></label>
+        <label class="field extra-field"><span id="description-label">Beschreibung</span><textarea id="entry-description" rows="3" maxlength="10000"></textarea></label>
+        <div id="feature-fields" hidden>
+          <label class="field extra-field"><span>Zielversion</span><input id="entry-target-version" type="text" maxlength="120" placeholder="z. B. v0.4.0"></label>
+          <fieldset class="criteria-editor"><legend>Akzeptanzkriterien</legend><div id="entry-criteria"></div><button type="button" class="button compact" id="add-criterion" aria-label="Akzeptanzkriterium hinzufügen">+</button></fieldset>
+        </div>
         <div id="task-fields">
           <div class="field-row">
             <label class="field"><span>Fällig am</span><input id="entry-due" type="date"></label>

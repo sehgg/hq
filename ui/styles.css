@@ -416,3 +416,13 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
 .selected-predecessor > span { flex: 1; min-width: 0; padding-top: 4px; }
 #predecessor-empty { font-size: 12px; margin: 8px 0 0; }
 @media (max-width: 900px) { .shell.with-details .task-row { grid-template-columns: 4ch minmax(0, 1fr) auto; } .shell.with-details .task-meta { grid-column: 2; grid-row: 2; justify-content: flex-start; } .shell.with-details .task-row > .button { grid-column: 3; grid-row: 1; } }
+.task-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.task-tab { padding: 7px 13px; color: var(--secondary); border: 1px solid transparent; border-bottom: 2px solid transparent; background: none; }
+.task-tab:hover { color: var(--text); background: var(--rail); }
+.task-tab[aria-pressed="true"] { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
+.criteria-editor { margin: 13px 0 0; padding: 0; }
+.criteria-editor legend { color: var(--secondary); font-size: 12px; margin-bottom: 5px; }
+.criterion-row { display: flex; gap: 5px; align-items: flex-start; margin-bottom: 5px; }
+.criterion-check { flex: none; padding-top: 7px; }
+.criterion-text { flex: 1; min-width: 0; }
+.criterion-text input { width: 100%; min-width: 0; min-height: 36px; padding: 5px 8px; border: 1px solid var(--border-strong); background: var(--rail); color: var(--text); font: inherit; }

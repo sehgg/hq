@@ -48,6 +48,7 @@ function setupDatabase(): void {
   });
   ipcMain.handle('subtask:add', (_event, taskId: number, title: string) => { store.addSubtask(taskId, title); return store.read(); });
   ipcMain.handle('subtask:complete', (_event, id: number, completed: boolean) => { store.completeSubtask(id, completed); return store.read(); });
+  ipcMain.handle('criterion:complete', (_event, id: number, completed: boolean) => { store.completeCriterion(id, completed); return store.read(); });
   app.once('will-quit', () => store.close());
 }
 
