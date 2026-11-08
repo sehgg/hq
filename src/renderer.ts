@@ -7,7 +7,7 @@ type TaskKind = import('./shared').TaskKind;
 type ProjectKind = import('./shared').ProjectKind;
 type TaskStatus = import('./shared').TaskStatus;
 type HqApi = import('./shared').HqApi;
-type View = 'inbox' | 'projects' | number;
+type View = 'inbox' | 'projects' | 'ideas' | 'research' | number;
 type EditorMode = { kind: 'project'; id: number | null } | { kind: 'task'; id: number | null; featureId?: number };
 
 interface Window {
@@ -93,6 +93,8 @@ function renderNavigation(): void {
       <div class="nav-caption"><p class="eyebrow" id="workspace-caption">Arbeitsbereich</p></div>
       ${navItem('inbox', 'Posteingang', inboxOpen)}
       ${navItem('projects', 'Projekte')}
+      ${navItem('ideas', 'Ideen')}
+      ${navItem('research', 'Recherche')}
     </section>
     <section class="nav-section" aria-labelledby="projects-caption">
       <div class="nav-caption">
@@ -256,6 +258,11 @@ function projectRow(project: Project): string {
 function render(): void {
   renderNavigation();
   renderDetails();
+  if (view === 'ideas' || view === 'research') {
+    const title = view === 'ideas' ? 'Ideen' : 'Recherche';
+    content.innerHTML = pageHeading(title, title, 'in Entwicklung', '');
+    return;
+  }
   if (view === 'projects') {
     content.innerHTML = `
       ${pageHeading('Projekte', 'Projekte', 'Plane Vorhaben und entscheide, was Vorrang hat.', addButton('new-project', 'Neues Projekt'))}
@@ -537,7 +544,7 @@ document.addEventListener('click', event => {
 
   const destination = target.dataset.view;
   if (destination) {
-    showView(destination === 'inbox' || destination === 'projects' ? destination : Number(destination));
+    showView(destination === 'inbox' || destination === 'projects' || destination === 'ideas' || destination === 'research' ? destination : Number(destination));
     return;
   }
 

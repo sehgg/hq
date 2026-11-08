@@ -26,3 +26,7 @@ Open a task or feature and choose **Löschen** in the details panel. Confirming 
 ## Linking tasks to features
 
 In a software project's feature details, use **Zugehörige Aufgaben** to create or assign tasks from the same project. Task details let you open, change, or clear the associated feature. Assignments do not change either entry's status or create a predecessor relationship.
+
+## Upcoming sections
+
+The **Ideen** and **Recherche** navigation entries are placeholders for sections still in development.
