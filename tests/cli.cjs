@@ -69,6 +69,17 @@ test('duplicate project names require a project ID and never select one implicit
  assert.equal(created.status,0); assert.equal(created.body.data.projectId,projects[0].id);
 });
 
+test('CLI creates inbox tasks and project releases without accepting an ambiguous destination',t=>{
+ const {db,run}=fixture(t);
+ const inbox=run('create','--inbox','--title','Eingangstest');
+ assert.equal(inbox.status,0); assert.equal(inbox.body.data.projectId,null); assert.equal(inbox.body.data.kind,'task');
+ const release=run('release-create','--project','App','--version','CLI-Test','--due','2026-11-20');
+ assert.equal(release.status,0); assert.equal(release.body.data.version,'CLI-Test'); assert.equal(release.body.data.dueDate,'2026-11-20');
+ const invalid=run('create','--inbox','--project','App','--title','Nicht anlegen');
+ assert.equal(invalid.body.error.code,'INVALID_ARGUMENT'); assert.equal(db.read().tasks.some(task=>task.title==='Nicht anlegen'),false);
+ assert.equal(run('release-create','--project','App','--version','CLI-Test').body.error.code,'VALIDATION_ERROR');
+});
+
 test('simultaneous writers cannot silently overwrite each other',async t=>{
  const {db,path}=fixture(t);
  const {fork}=require('node:child_process');

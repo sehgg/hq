@@ -62,6 +62,8 @@ Examples:
 hq projects --json
 hq tasks --project "My project"
 hq releases --project "My project"
+hq release-create --project "My project" --version "v1.0"
+hq create --inbox --title "Review inbox"
 hq show --project "My project" --title "Export"
 hq create --project "My project" --title "Test export" --feature 7 --release 2 --due 2026-11-30
 hq edit --id 12 --status in_progress --predecessors 8,9

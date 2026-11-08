@@ -11,9 +11,10 @@ const help = `HQ CLI
   hq projects [--json]
   hq project (--project NAME | --project-id ID) [--json]
   hq releases (--project NAME | --project-id ID) [--json]
+  hq release-create (--project NAME | --project-id ID) --version VERSION [--due YYYY-MM-DD]
   hq tasks --project NAME [--title TEXT] [--json]
   hq show (--id ID | --project NAME --title TEXT) [--json]
-  hq create --project NAME --title TEXT [--kind task|feature|fix] [options]
+  hq create (--project NAME | --project-id ID | --inbox) --title TEXT [--kind task|feature|fix] [options]
   hq edit (--id ID | --project NAME --title TEXT) [--new-title TEXT] [options]
   hq done (--id ID | --project NAME --title TEXT)
   hq subtask-add --id ID --text TEXT
@@ -24,9 +25,9 @@ Options: --description TEXT --priority low|normal|high --status planned|in_progr
   --criteria JSON (array of {id:null|number,text:string,completed:boolean}); --move-to PROJECT_ID
   --project-id ID selects a project with a duplicate name; --db PATH; --json
 Use task IDs to resolve ambiguous matches. Tasks without a title filter are suggestions only.\n`;
-const options = Object.fromEntries(['project','project-id','move-to','title','new-title','id','kind','description','priority','status','due','predecessors','feature','release','criteria','subtask','criterion','text','db'].map(key => [key,{type:'string' as const}]));
+const options = Object.fromEntries(['project','project-id','move-to','title','new-title','id','kind','description','priority','status','due','predecessors','feature','release','criteria','subtask','criterion','text','version','db'].map(key => [key,{type:'string' as const}]));
 let args: ReturnType<typeof parseArgs>;
-try { args = parseArgs({args:process.argv.slice(2), options:{...options,json:{type:'boolean'},undo:{type:'boolean'},help:{type:'boolean'}},allowPositionals:true,strict:true}); }
+try { args = parseArgs({args:process.argv.slice(2), options:{...options,json:{type:'boolean'},undo:{type:'boolean'},help:{type:'boolean'},inbox:{type:'boolean'}},allowPositionals:true,strict:true}); }
 catch (error) {
  const message=error instanceof Error ? error.message : 'Ungültige Argumente.';
  process.stderr.write(process.argv.includes('--json') ? JSON.stringify({ok:false,error:{code:'INVALID_ARGUMENT',message}})+'\n' : `INVALID_ARGUMENT: ${message}\n`);
@@ -97,7 +98,7 @@ function render(data:unknown):void {
 function run():void {
  if (command==='help' || v.help) { if (json) render({help}); else process.stdout.write(help); return; }
  if (args.positionals.length!==1) return fail('INVALID_ARGUMENT','Ungültiger Befehl.');
- const allowed=['projects','project','releases','tasks','show','create','edit','done','subtask-add','subtask-done','criterion-done'];
+ const allowed=['projects','project','releases','release-create','tasks','show','create','edit','done','subtask-add','subtask-done','criterion-done'];
  if (!allowed.includes(command)) return fail('INVALID_ARGUMENT',`Unbekannter Befehl: ${command}`);
  const defaultPath=process.platform==='darwin' ? join(homedir(),'Library','Application Support','HQ','hq.sqlite') : process.platform==='win32' && process.env.APPDATA ? join(process.env.APPDATA,'HQ','hq.sqlite') : '';
  const file=str('db') ?? defaultPath;
@@ -117,9 +118,14 @@ function run():void {
   if (command==='show') return render(taskDetail(w,findTask(w)));
   const result=db.mutate(w.revision,()=>{
    if (command==='create') {
-    const project=projectFor(w,str('project')); const name=str('title') ?? fail('INVALID_ARGUMENT','--title ist erforderlich.');
-    const base:TaskFields={title:name,description:'',priority:'normal',status:'planned',dueDate:null,kind:(str('kind') ?? 'task') as TaskFields['kind'],projectId:project.id,featureId:null,releaseId:null,criteria:[],predecessorIds:[]};
+    if (v.inbox && (str('project') || str('project-id') || str('move-to'))) return fail('INVALID_ARGUMENT','--inbox kann nicht mit einem Projekt kombiniert werden.');
+    const projectId=v.inbox ? null : projectFor(w,str('project')).id; const name=str('title') ?? fail('INVALID_ARGUMENT','--title ist erforderlich.');
+    const base:TaskFields={title:name,description:'',priority:'normal',status:'planned',dueDate:null,kind:(str('kind') ?? 'task') as TaskFields['kind'],projectId,featureId:null,releaseId:null,criteria:[],predecessorIds:[]};
     db.saveTask(null,fields(base)); const next=db.read(); const ids=new Set(w.tasks.map(t=>t.id)); return taskDetail(next,next.tasks.find(t=>!ids.has(t.id))!);
+   }
+   if (command==='release-create') {
+    const project=projectFor(w,str('project')); const version=str('version') ?? fail('INVALID_ARGUMENT','--version ist erforderlich.');
+    db.createRelease(project.id,version,str('due') ?? null); const next=db.read(); const ids=new Set(w.releases.map(r=>r.id)); return next.releases.find(r=>!ids.has(r.id))!;
    }
    if (command==='edit') { const old=findTask(w); db.saveTask(old.id,fields(old)); const next=db.read(); return taskDetail(next,next.tasks.find(t=>t.id===old.id)!); }
    if (command==='done') { const old=findTask(w); db.completeTask(old.id,true); const next=db.read(); return taskDetail(next,next.tasks.find(t=>t.id===old.id)!); }
