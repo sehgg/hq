@@ -6,27 +6,42 @@ const vm = require('node:vm');
 
 function renderer(hq = { read: () => new Promise(() => {}) }) {
   class Element {
-    constructor() { this.value = ''; this.innerHTML = ''; this.hidden = false; this.disabled = false; this.open = false; this.dataset = {}; this.listeners = {}; this.children = []; this.classList = { toggle() {} }; }
+    constructor() { this.value = ''; this.innerHTML = ''; this.hidden = false; this.disabled = false; this.open = false; this.dataset = {}; this.listeners = {}; this.children = []; this.attributes = {}; this.width = 226; this.style = { properties:{}, setProperty(name, value) { this.properties[name] = value; } }; this.classList = { toggle() {}, add() {}, remove() {} }; }
     addEventListener(type, listener) { (this.listeners[type] ??= []).push(listener); }
     dispatch(type, event = {}) { for (const listener of this.listeners[type] ?? []) listener(event); }
     async dispatchAsync(type, event = {}) { for (const listener of this.listeners[type] ?? []) await listener(event); }
     replaceChildren(...children) { this.children = children; this.value = children[0]?.value ?? ''; }
-    setAttribute() {} focus() {} showModal() { this.open = true; } close() { this.open = false; }
+    setAttribute(name, value) { this.attributes[name] = value; } focus() {} showModal() { this.open = true; } close() { this.open = false; }
+    getBoundingClientRect() { return {width:this.width}; }
+    setPointerCapture(id) { this.capturedPointer=id; } hasPointerCapture(id) { return this.capturedPointer===id; } releasePointerCapture() { this.capturedPointer=null; }
     querySelector() { return null; }
     closest() { return this; }
   }
   const nodes = new Map();
   const handlers = {};
-  const document = { querySelector(selector) { if (!nodes.has(selector)) nodes.set(selector, new Element()); return nodes.get(selector); }, addEventListener(type, handler) { (handlers[type] ??= []).push(handler); } };
+  const document = { body:new Element(), querySelector(selector) { if (!nodes.has(selector)) nodes.set(selector, new Element()); return nodes.get(selector); }, addEventListener(type, handler) { (handlers[type] ??= []).push(handler); } };
   const click = (action, id) => { const target = new Element(); target.dataset.action = action; if (id !== undefined) target.dataset.id = String(id); for (const handler of handlers.click ?? []) handler({ target }); };
   class Option { constructor(text, value) { this.text = text; this.value = value; } }
-  const context = { document, Option, Element, HTMLInputElement: Element, HTMLSelectElement: Element, HTMLFormElement: Element, window: { hq, clearTimeout() {}, setTimeout() { return 0; } }, console };
+  const context = { document, Option, Element, HTMLInputElement: Element, HTMLSelectElement: Element, HTMLFormElement: Element, getComputedStyle: element => ({getPropertyValue: name => element.style.properties[name] ?? '226px'}), window: { hq, clearTimeout() {}, setTimeout() { return 0; }, addEventListener() {} }, console };
   vm.createContext(context);
   vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, orderTaskTree, openEditor, openDeleteDialog, openFeatureTaskDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = { releases: [], ...value }; }, selected: () => [...selectedPredecessors] };`, context);
   const change = async target => { for (const handler of handlers.change ?? []) await handler({target}); };
   return { api: context.testApi, node: selector => document.querySelector(selector), click, change };
 }
 const task = (id, title, projectId, overrides = {}) => ({ id, title, projectId, priority:'normal', description:'', kind:'task', featureId:null, releaseId:null, targetVersion:null, criteria:[], dueDate:null, status:'planned', completed:false, predecessorIds:[], successorIds:[], ...overrides });
+
+test('sidebar resize tracks pointer movement, respects the current minimum and supports keyboard input', () => {
+  const {node} = renderer(); const handle=node('#sidebar-resize'), shell=node('.shell'), sidebar=node('#sidebar');
+  const pointer = (clientX, pointerId=1) => ({button:0, clientX, pointerId, preventDefault(){}});
+  handle.dispatch('pointerdown', pointer(226)); assert.equal(handle.capturedPointer,1);
+  handle.dispatch('pointermove', pointer(326)); assert.equal(shell.style.properties['--sidebar-width'],'326px');
+  handle.dispatch('pointermove', pointer(100)); assert.equal(shell.style.properties['--sidebar-width'],'226px');
+  handle.dispatch('pointerup', pointer(100)); assert.equal(handle.capturedPointer,null);
+  handle.dispatch('pointermove', pointer(400)); assert.equal(shell.style.properties['--sidebar-width'],'226px');
+  shell.style.properties['--sidebar-min']='190px'; sidebar.width=230;
+  handle.dispatch('keydown',{key:'ArrowLeft',preventDefault(){}}); assert.equal(shell.style.properties['--sidebar-width'],'220px');
+  assert.equal(handle.attributes['aria-valuemin'],'190');
+});
 
 test('task rows expose every status and mark cross-project dependencies without changing the title', () => {
   const { api } = renderer();

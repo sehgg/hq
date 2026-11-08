@@ -71,6 +71,51 @@ const projectField = document.querySelector<HTMLSelectElement>('#entry-project')
 const editorFields = document.querySelector<HTMLFieldSetElement>('#editor-fields')!;
 const editorError = document.querySelector<HTMLElement>('#editor-error')!;
 const saveButton = document.querySelector<HTMLButtonElement>('#save-entry')!;
+const shell = document.querySelector<HTMLElement>('.shell')!;
+const sidebar = document.querySelector<HTMLElement>('#sidebar')!;
+const sidebarResize = document.querySelector<HTMLElement>('#sidebar-resize')!;
+
+function syncSidebarResize(): void {
+  const layout = getComputedStyle(shell);
+  const minimum = parseFloat(layout.getPropertyValue('--sidebar-min'));
+  const reserved = parseFloat(layout.getPropertyValue('--sidebar-space'));
+  sidebarResize.setAttribute('aria-valuemin', String(minimum));
+  sidebarResize.setAttribute('aria-valuemax', String(Math.max(minimum, Math.floor(shell.getBoundingClientRect().width - reserved))));
+  sidebarResize.setAttribute('aria-valuenow', String(Math.round(sidebar.getBoundingClientRect().width)));
+}
+function setSidebarWidth(width: number): void {
+  const minimum = parseFloat(getComputedStyle(shell).getPropertyValue('--sidebar-min'));
+  shell.style.setProperty('--sidebar-width', `${Math.max(minimum, width)}px`);
+  syncSidebarResize();
+}
+let sidebarDrag: { pointerId: number; startX: number; startWidth: number } | null = null;
+sidebarResize.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || sidebarDrag) return;
+  sidebarDrag = { pointerId: event.pointerId, startX: event.clientX, startWidth: sidebar.getBoundingClientRect().width };
+  sidebarResize.setPointerCapture(event.pointerId);
+  document.body.classList.add('resizing-sidebar');
+  event.preventDefault();
+});
+sidebarResize.addEventListener('pointermove', event => {
+  if (sidebarDrag?.pointerId === event.pointerId) setSidebarWidth(sidebarDrag.startWidth + event.clientX - sidebarDrag.startX);
+});
+function endSidebarDrag(event: PointerEvent): void {
+  if (sidebarDrag?.pointerId !== event.pointerId) return;
+  sidebarDrag = null;
+  document.body.classList.remove('resizing-sidebar');
+  if (sidebarResize.hasPointerCapture(event.pointerId)) sidebarResize.releasePointerCapture(event.pointerId);
+}
+sidebarResize.addEventListener('pointerup', endSidebarDrag);
+sidebarResize.addEventListener('pointercancel', endSidebarDrag);
+sidebarResize.addEventListener('lostpointercapture', endSidebarDrag);
+sidebarResize.addEventListener('focus', syncSidebarResize);
+sidebarResize.addEventListener('keydown', event => {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+  event.preventDefault();
+  setSidebarWidth(sidebar.getBoundingClientRect().width + (event.key === 'ArrowLeft' ? -10 : 10));
+});
+window.addEventListener('resize', syncSidebarResize);
+syncSidebarResize();
 
 const priorityNames: Record<Priority, string> = { high: 'Hoch', normal: 'Normal', low: 'Niedrig' };
 let workspace: Workspace = { projects: [], tasks: [], subtasks: [], releases: [] };
@@ -420,7 +465,8 @@ function renderDetails(): void {
   const release = workspace.releases.find(item => item.id === selectedReleaseId);
   details.hidden = !task && !release;
   details.setAttribute('aria-label', release ? 'Releasedetails' : 'Aufgabendetails');
-  document.querySelector('.shell')!.classList.toggle('with-details', !!task || !!release);
+  shell.classList.toggle('with-details', !!task || !!release);
+  syncSidebarResize();
   if (release) {
     const items = workspace.tasks.filter(item => item.releaseId === release.id);
     const list = (kind: TaskKind) => {

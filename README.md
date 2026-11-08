@@ -31,6 +31,10 @@ In a software project's feature or fix details, use **Zugehörige Aufgaben** to 
 
 The **Ideen** and **Recherche** navigation entries are placeholders for sections still in development.
 
+## Sidebar width
+
+Drag the divider at the right edge of the sidebar to adjust its width. The original width at the current window size is the minimum. The focused divider also supports the left and right arrow keys.
+
 ## Planning releases
 
 Software projects have a **Releases** tab. Use **[ + ]** to create a version and **[ B ]** to edit an existing version, its optional due date, and its status. Releases can be planned, in progress, paused, or published. Tasks, features, and fixes can target an unpublished release in the same project. The release overview and details show their current statuses. A release can be published only after all assigned entries are done; HQ lists the open entries that block publication. Changing a release back to an unpublished status makes it selectable again. Publishing removes that version from new selections while retaining existing assignments and the release contents. Existing free-text target versions are migrated to planned releases when the database is upgraded. Select a release to open its details, edit it or delete it. Deleting a release removes its assignments but keeps the entries.
