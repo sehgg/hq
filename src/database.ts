@@ -129,7 +129,8 @@ export class PlannerDatabase {
   } catch (error) { this.db.exec('ROLLBACK'); throw error; }
  }
  private ensureReleaseCanPublish(id: number): void {
-  if (this.db.prepare("SELECT 1 FROM tasks WHERE release_id=? AND kind='feature' AND status<>'done'").get(id)) throw new Error('Schließe zuerst alle zugehörigen Features ab.');
+  const open = this.db.prepare("SELECT title, kind FROM tasks WHERE release_id=? AND status<>'done' ORDER BY id").all(id) as unknown as {title:string; kind:string}[];
+  if (open.length) throw new Error('Schließe zuerst diese Einträge ab: ' + open.map(item => `${item.kind === 'task' ? 'Aufgabe' : item.kind === 'fix' ? 'Fix' : 'Feature'}: ${item.title}`).join('; '));
  }
  publishRelease(id: number): void {
   identifier(id);
@@ -151,10 +152,10 @@ export class PlannerDatabase {
   if (releaseId !== null) {
    const release = this.db.prepare('SELECT project_id AS projectId, published FROM releases WHERE id=?').get(releaseId) as {projectId:number; published:number} | undefined;
    const existing = id === null ? undefined : this.db.prepare('SELECT release_id AS releaseId FROM tasks WHERE id=?').get(identifier(id)) as {releaseId:number | null} | undefined;
-   if (fields.kind === 'task' || !release || release.projectId !== projectId || (release.published && existing?.releaseId !== releaseId)) throw new Error('Wähle ein geplantes Release desselben Softwareprojekts.');
+   if (!release || release.projectId !== projectId || (release.published && existing?.releaseId !== releaseId)) throw new Error('Wähle ein geplantes Release desselben Softwareprojekts.');
   }
   if (!Array.isArray(fields.criteria)) throw new Error('Die Akzeptanzkriterien sind ungültig.');
-  if (fields.kind === 'task' && (releaseId !== null || fields.criteria.length)) throw new Error('Akzeptanzkriterien und Zielversion gehören zu einem Feature oder Fix.');
+  if (fields.kind === 'task' && fields.criteria.length) throw new Error('Akzeptanzkriterien gehören zu einem Feature oder Fix.');
   const criteria = fields.criteria.map(criterion => {
    if (!criterion || typeof criterion.text !== 'string' || !criterion.text.trim() || criterion.text.trim().length > 1000 || typeof criterion.completed !== 'boolean') throw new Error('Ein Akzeptanzkriterium muss zwischen 1 und 1000 Zeichen haben.');
    return { id: criterion.id === null ? null : identifier(criterion.id), text: criterion.text.trim(), completed: criterion.completed };

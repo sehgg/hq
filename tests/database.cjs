@@ -355,10 +355,10 @@ test('parallel releases enforce project and publication rules without losing shi
   assert.throws(()=>db.createRelease(project,'v0.4.0'),/bereits vorhanden/);
   let w=db.read(); const v04=w.releases.find(x=>x.projectId===project&&x.version==='v0.4.0').id, v05=w.releases.find(x=>x.projectId===project&&x.version==='v0.5.0').id, foreign=w.releases.find(x=>x.projectId===other).id;
   db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:v04})); db.saveTask(null,fields('Feature',{kind:'feature',projectId:project,releaseId:v05}));
-  const fix=find(db,'Fix'); db.publishRelease(v04);
+  db.completeTask(find(db,'Fix').id,true); const fix=find(db,'Fix'); db.publishRelease(v04);
   assert.throws(()=>db.saveTask(null,fields('Nachträglich',{kind:'fix',projectId:project,releaseId:v04})),/geplantes Release/);
   assert.throws(()=>db.saveTask(null,fields('Anderes Projekt',{kind:'fix',projectId:project,releaseId:foreign})),/geplantes Release/);
-  assert.throws(()=>db.saveTask(null,fields('Aufgabe',{projectId:project,releaseId:v05})),/geplantes Release/);
+  assert.throws(()=>db.saveTask(null,fields('Aufgabe',{projectId:project,releaseId:foreign})),/geplantes Release/);
   db.saveTask(fix.id,{...fix,description:'Bearbeitet'});
   db.close(); db=new PlannerDatabase(file); w=db.read();
   assert.equal(w.releases.find(x=>x.id===v04).published,true); assert.equal(w.releases.find(x=>x.id===v05).published,false);
@@ -376,7 +376,7 @@ test('releases can be renamed and assigned an optional due date without losing t
   assert.equal(find(db,'Fix').releaseId,release.id); assert.equal(find(db,'Fix').targetVersion,'v0.4.1');
   assert.throws(()=>db.renameRelease(release.id,'v0.5.0',null),/bereits vorhanden/);
   assert.throws(()=>db.renameRelease(release.id,'v0.4.2','2026-02-30'),/Fälligkeitsdatum/);
-  db.publishRelease(release.id); db.renameRelease(release.id,'v0.4.2',null); db.close();
+  db.completeTask(find(db,'Fix').id,true); db.publishRelease(release.id); db.renameRelease(release.id,'v0.4.2',null); db.close();
   db=new PlannerDatabase(file); const result=db.read().releases.find(x=>x.id===release.id);
   assert.equal(result.version,'v0.4.2'); assert.equal(result.dueDate,null); assert.equal(result.published,true);
   assert.equal(find(db,'Fix').targetVersion,'v0.4.2'); db.close();
@@ -386,7 +386,7 @@ test('existing releases receive an empty due date without losing assignments or 
   const file=tempDatabase(t); let db=new PlannerDatabase(file);
   db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
   db.createRelease(project,'v1'); const release=db.read().releases[0].id;
-  db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:release})); db.publishRelease(release); db.close();
+  db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:release})); db.completeTask(find(db,'Fix').id,true); db.publishRelease(release); db.close();
   const old=new DatabaseSync(file); old.exec('ALTER TABLE releases DROP COLUMN due_date'); old.close();
   db=new PlannerDatabase(file); const workspace=db.read();
   assert.equal(workspace.releases[0].dueDate,null); assert.equal(workspace.releases[0].published,true);
@@ -401,7 +401,7 @@ test('deleting a release preserves linked features and fixes, clears their assig
   db.saveTask(null,fields('Feature',{projectId:project,kind:'feature',releaseId:old,description:'bleibt'}));
   db.saveTask(null,fields('Fix',{projectId:project,kind:'fix',releaseId:old,criteria:[{id:null,text:'geprüft',completed:true}]}));
   db.saveTask(null,fields('Anderer Fix',{projectId:project,kind:'fix',releaseId:other}));
-  db.completeTask(find(db,'Feature').id,true); db.publishRelease(old);
+  db.completeTask(find(db,'Feature').id,true); db.completeTask(find(db,'Fix').id,true); db.publishRelease(old);
   const external=new DatabaseSync(file); external.exec("CREATE TRIGGER refuse_release_delete BEFORE DELETE ON releases BEGIN SELECT RAISE(ABORT, 'test failure'); END;"); external.close();
   assert.throws(()=>db.deleteRelease(old),/test failure/);
   assert.equal(find(db,'Feature').releaseId,old); assert.equal(find(db,'Fix').releaseId,old);
@@ -419,7 +419,7 @@ test('release status can be changed both ways without changing assigned entries'
   db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
   db.createRelease(project,'v1','2026-12-20'); const id=db.read().releases[0].id;
   db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:id}));
-  db.renameRelease(id,'v1','2026-12-20','published');
+  db.completeTask(find(db,'Fix').id,true); db.renameRelease(id,'v1','2026-12-20','published');
   assert.equal(db.read().releases[0].published,true);
   assert.throws(()=>db.saveTask(null,fields('Neues Feature',{kind:'feature',projectId:project,releaseId:id})),/geplantes Release/);
   db.renameRelease(id,'v1','2026-12-20','planned');
@@ -439,14 +439,14 @@ test('release statuses persist and publication requires every assigned feature t
   db.saveTask(null,fields('Offener Fix',{kind:'fix',projectId:project,releaseId:v1}));
   db.saveTask(null,fields('Späteres Feature',{kind:'feature',projectId:project,releaseId:v2}));
   for (const state of ['in_progress','paused','planned']) { db.renameRelease(v1,'v1',null,state); assert.equal(db.read().releases.find(r=>r.id===v1).status,state); }
-  assert.throws(()=>db.publishRelease(v1),/alle zugehörigen Features/);
-  assert.throws(()=>db.renameRelease(v1,'v1-neu',null,'published'),/alle zugehörigen Features/);
+  assert.throws(()=>db.publishRelease(v1),/Einträge ab/);
+  assert.throws(()=>db.renameRelease(v1,'v1-neu',null,'published'),/Einträge ab/);
   assert.equal(db.read().releases.find(r=>r.id===v1).version,'v1');
-  db.completeTask(find(db,'Feature A').id,true); assert.throws(()=>db.publishRelease(v1),/alle zugehörigen Features/);
-  db.completeTask(find(db,'Feature B').id,true); db.publishRelease(v1);
+  db.completeTask(find(db,'Feature A').id,true); assert.throws(()=>db.publishRelease(v1),/Einträge ab/);
+  db.completeTask(find(db,'Feature B').id,true); assert.throws(()=>db.publishRelease(v1),/Fix: Offener Fix/); db.completeTask(find(db,'Offener Fix').id,true); db.publishRelease(v1);
   db.renameRelease(v1,'v1.1',null,'published');
   assert.equal(find(db,'Feature A').releaseId,v1); assert.equal(find(db,'Feature A').targetVersion,'v1.1'); assert.equal(find(db,'Feature B').targetVersion,'v1.1');
-  assert.equal(find(db,'Offener Fix').status,'planned'); db.close(); db=new PlannerDatabase(file);
+  assert.equal(find(db,'Offener Fix').status,'done'); db.close(); db=new PlannerDatabase(file);
   assert.equal(db.read().releases.find(r=>r.id===v1).status,'published'); assert.equal(find(db,'Feature A').targetVersion,'v1.1');
   db.renameRelease(v1,'v1.1',null,'in_progress'); db.close(); db=new PlannerDatabase(file);
   assert.equal(db.read().releases.find(r=>r.id===v1).status,'in_progress'); assert.equal(db.read().releases.find(r=>r.id===v1).published,false); db.close();
@@ -456,11 +456,36 @@ test('legacy planned and published release statuses are migrated without changin
   const file=tempDatabase(t); let db=new PlannerDatabase(file);
   db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
   db.createRelease(project,'v1'); db.createRelease(project,'v2'); const v1=db.read().releases.find(r=>r.version==='v1').id;
-  db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:v1})); db.publishRelease(v1); db.close();
+  db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:v1})); db.completeTask(find(db,'Fix').id,true); db.publishRelease(v1); db.close();
   const old=new DatabaseSync(file); old.exec('ALTER TABLE releases DROP COLUMN status'); old.close();
   db=new PlannerDatabase(file); const w=db.read();
   assert.equal(w.releases.find(r=>r.id===v1).status,'published'); assert.equal(w.releases.find(r=>r.version==='v2').status,'planned');
   assert.equal(w.tasks[0].releaseId,v1); assert.equal(w.tasks[0].targetVersion,'v1'); db.close();
+});
+
+test('release tasks are project-scoped, persist and block both publication paths until all kinds are done', t => {
+  const file=tempDatabase(t); let db=new PlannerDatabase(file);
+  for (const name of ['App','Andere App']) db.saveProject(null,{title:name,kind:'software',priority:'normal',description:''});
+  const project=db.read().projects.find(p=>p.title==='App').id, other=db.read().projects.find(p=>p.title==='Andere App').id;
+  db.createRelease(project,'v1'); db.createRelease(other,'v2');
+  const release=db.read().releases.find(r=>r.projectId===project).id, foreign=db.read().releases.find(r=>r.projectId===other).id;
+  db.saveTask(null,fields('Aufgabe',{projectId:project,releaseId:release}));
+  db.saveTask(null,fields('Feature',{kind:'feature',projectId:project,releaseId:release}));
+  db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:release}));
+  const task=find(db,'Aufgabe');
+  assert.throws(()=>db.saveTask(task.id,{...task,releaseId:foreign}),/desselben Softwareprojekts/);
+  assert.throws(()=>db.saveTask(task.id,{...task,projectId:other}),/desselben Softwareprojekts/);
+  db.close(); db=new PlannerDatabase(file);
+  assert.equal(find(db,'Aufgabe').releaseId,release);
+  for (const attempt of [()=>db.publishRelease(release),()=>db.renameRelease(release,'v1',null,'published')]) {
+    assert.throws(attempt,error=>['Aufgabe: Aufgabe','Feature: Feature','Fix: Fix'].every(text=>error.message.includes(text)));
+  }
+  db.completeTask(find(db,'Feature').id,true); db.completeTask(find(db,'Fix').id,true);
+  assert.throws(()=>db.publishRelease(release),/Aufgabe: Aufgabe/);
+  db.completeTask(task.id,true); db.publishRelease(release); db.close(); db=new PlannerDatabase(file);
+  assert.equal(db.read().releases.find(r=>r.id===release).published,true);
+  assert.equal(find(db,'Aufgabe').status,'done'); assert.equal(find(db,'Aufgabe').releaseId,release);
+  db.deleteRelease(release); assert.equal(find(db,'Aufgabe').releaseId,null); db.close();
 });
 
 test('project deadline accepts the boundary and enforces tasks, features, fixes and moves', t => {
