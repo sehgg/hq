@@ -265,3 +265,20 @@ test('feature membership is persistent, project-scoped and independent of status
   assert.equal(find(db,'Feature XY definieren').status,'done');
   db.close();
 });
+
+test('reassigning a task updates exactly one feature and project moves cannot retain a foreign feature', t => {
+  const file=tempDatabase(t); const db=new PlannerDatabase(file);
+  db.saveProject(null,{title:'A',kind:'software',priority:'normal',description:''});
+  db.saveProject(null,{title:'B',kind:'software',priority:'normal',description:''});
+  const a=db.read().projects.find(p=>p.title==='A').id, b=db.read().projects.find(p=>p.title==='B').id;
+  db.saveTask(null,fields('F1',{kind:'feature',projectId:a})); db.saveTask(null,fields('F2',{kind:'feature',projectId:a}));
+  const f1=find(db,'F1').id,f2=find(db,'F2').id;
+  db.saveTask(null,fields('Task',{projectId:a,featureId:f1})); const id=find(db,'Task').id;
+  db.assignFeature(id,f2); assert.equal(find(db,'Task').featureId,f2);
+  assert.equal(db.read().tasks.filter(task=>task.featureId===f1).length,0);
+  assert.throws(()=>db.saveTask(id,fields('Task',{projectId:b,featureId:f2})),/selben Softwareprojekt/);
+  assert.equal(find(db,'Task').projectId,a); assert.equal(find(db,'Task').featureId,f2);
+  db.saveTask(id,fields('Task',{projectId:b,featureId:null}));
+  assert.equal(find(db,'Task').projectId,b); assert.equal(find(db,'Task').featureId,null);
+  db.close();
+});

@@ -261,3 +261,24 @@ test('feature details create and assign tasks and reflect their independent stat
   assert.equal(db.read().tasks.find(x=>x.id===created.id).featureId,null);
   db.close();
 });
+
+test('task details change feature assignment and editor clears it when project changes', async t => {
+  const { mkdtempSync,rmSync }=require('node:fs'); const { join }=require('node:path'); const { tmpdir }=require('node:os'); const {PlannerDatabase}=require('../dist/database');
+  const dir=mkdtempSync(join(tmpdir(),'hq-reassign-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const db=new PlannerDatabase(join(dir,'hq.sqlite'));
+  db.saveProject(null,{title:'A',kind:'software',priority:'normal',description:''}); db.saveProject(null,{title:'B',kind:'software',priority:'normal',description:''});
+  const a=db.read().projects.find(p=>p.title==='A').id,b=db.read().projects.find(p=>p.title==='B').id;
+  const base={priority:'normal',description:'',featureId:null,targetVersion:null,criteria:[],projectId:a,dueDate:null,status:'planned',predecessorIds:[]};
+  db.saveTask(null,{...base,title:'F1',kind:'feature'}); db.saveTask(null,{...base,title:'F2',kind:'feature'});
+  const f1=db.read().tasks.find(x=>x.title==='F1').id, f2=db.read().tasks.find(x=>x.title==='F2').id;
+  db.saveTask(null,{...base,title:'Aufgabe',kind:'task',featureId:f1}); const id=db.read().tasks.find(x=>x.title==='Aufgabe').id;
+  const hq={read:()=>new Promise(()=>{}),assignFeature:async(task,feature)=>{db.assignFeature(task,feature);return db.read();}};
+  const {api,node,change}=renderer(hq); api.setWorkspace(db.read()); api.showView(a); api.selectTask(id);
+  assert.match(node('#details').innerHTML,/F1/);
+  const select=node('#feature-select'); select.dataset.featureAssignment=String(id); select.value=String(f2); await change(select);
+  assert.equal(db.read().tasks.find(x=>x.id===id).featureId,f2); assert.match(node('#details').innerHTML,/F2/);
+  api.openEditor({kind:'task',id}); assert.equal(node('#entry-task-feature').value,String(f2));
+  node('#entry-project').value=String(b); node('#entry-project').dispatch('change');
+  assert.equal(node('#entry-task-feature').value,'');
+  assert.deepEqual(node('#entry-task-feature').children.map(option=>option.text),['Kein Feature']);
+  db.close();
+});
