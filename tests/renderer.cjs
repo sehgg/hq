@@ -313,5 +313,14 @@ test('fixes have their own tab and persist criteria, release and task assignment
   click('tab-fix'); fix=db.read().tasks.find(item=>item.kind==='fix'); api.selectTask(fix.id);
   assert.match(node('#details').innerHTML,/v0\.4\.0/); assert.match(node('#details').innerHTML,/Vorhandene Aufgabe/); assert.equal(fix.criteria[0].completed,true);
   api.openEditor({kind:'task',id:fix.id}); assert.equal(node('#editor-title').textContent,'Fix bearbeiten'); assert.equal(node('#entry-description').value,'Trennzeichen korrigieren');
+  node('#entry-description').value='Trennzeichen und Quotes korrigieren'; node('#entry-target-version').value='v0.4.1';
+  await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
+  db.close(); db=new PlannerDatabase(path); api.setWorkspace(db.read());
+  fix=db.read().tasks.find(item=>item.kind==='fix'); assert.equal(fix.description,'Trennzeichen und Quotes korrigieren'); assert.equal(fix.targetVersion,'v0.4.1');
+  assert.equal(fix.criteria[0].completed,true); assert.equal(db.read().tasks.find(item=>item.id===task.id).featureId,fix.id);
+  for (const [tab, expected, forbidden] of [['tab-task','Vorhandene Aufgabe',['CSV reparieren','>Feature</span>']],['tab-feature','Feature',['Vorhandene Aufgabe','CSV reparieren']],['tab-fix','CSV reparieren',['Vorhandene Aufgabe','>Feature</span>']]]) {
+    click(tab); const contents=node('#content').innerHTML; assert.match(contents,new RegExp(expected));
+    for (const text of forbidden) assert.equal(contents.includes(text),false);
+  }
   db.close();
 });
