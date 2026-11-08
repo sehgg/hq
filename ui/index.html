@@ -74,7 +74,7 @@
           </div>
           <fieldset class="predecessors"><legend>Vorgänger</legend><div id="entry-predecessors"></div><button type="button" class="button compact" id="add-predecessor" aria-label="Vorgänger hinzufügen" title="Vorgänger hinzufügen">+</button></fieldset>
         </div>
-        <label class="field extra-field" id="task-feature-field" hidden><span>Zugehöriges Feature</span><select id="entry-task-feature"></select></label>
+        <label class="field extra-field" id="task-feature-field" hidden><span>Zugehöriges Feature oder Fix</span><select id="entry-task-feature"></select></label>
         <div class="field-row">
           <label class="field">
             <span>Priorität</span>
@@ -100,7 +100,7 @@
   </dialog>
   <dialog id="feature-task-dialog" aria-labelledby="feature-task-title">
     <div class="dialog-head"><h2 id="feature-task-title">Aufgabe zuordnen</h2><button type="button" class="button compact" id="close-feature-task" aria-label="Schließen">×</button></div>
-    <fieldset><p>Eine neue Aufgabe anlegen oder eine bestehende Aufgabe aus diesem Projekt auswählen.</p><button type="button" class="button secondary" id="new-feature-task" aria-label="Neue Aufgabe für dieses Feature anlegen" title="Neue Aufgabe für dieses Feature anlegen">+</button><label class="field extra-field"><span>Bestehende Aufgabe</span><select id="existing-feature-task"></select></label><p id="feature-task-error" class="editor-error" role="alert" hidden></p></fieldset>
+    <fieldset><p>Eine neue Aufgabe anlegen oder eine bestehende Aufgabe aus diesem Projekt auswählen.</p><button type="button" class="button secondary" id="new-feature-task" aria-label="Neue zugehörige Aufgabe anlegen" title="Neue zugehörige Aufgabe anlegen">+</button><label class="field extra-field"><span>Bestehende Aufgabe</span><select id="existing-feature-task"></select></label><p id="feature-task-error" class="editor-error" role="alert" hidden></p></fieldset>
     <div class="dialog-actions"><button type="button" class="button secondary" id="cancel-feature-task">Abbrechen</button><button type="button" class="button primary" id="assign-feature-task">Zuordnen</button></div>
   </dialog>
   <dialog id="predecessor-dialog" aria-labelledby="predecessor-dialog-title">

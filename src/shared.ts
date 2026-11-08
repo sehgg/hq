@@ -1,7 +1,7 @@
 export type Priority = 'low' | 'normal' | 'high';
 export type TaskStatus = 'planned' | 'in_progress' | 'paused' | 'done';
 export type ProjectKind = 'normal' | 'software';
-export type TaskKind = 'task' | 'feature';
+export type TaskKind = 'task' | 'feature' | 'fix';
 export interface BaseFields { title: string; priority: Priority; description: string }
 export interface ProjectFields extends BaseFields { kind: ProjectKind }
 export interface CriterionFields { id: number | null; text: string; completed: boolean }

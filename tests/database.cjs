@@ -282,3 +282,29 @@ test('reassigning a task updates exactly one feature and project moves cannot re
   assert.equal(find(db,'Task').projectId,b); assert.equal(find(db,'Task').featureId,null);
   db.close();
 });
+
+test('fix migration preserves existing feature links, criteria and dependencies and retains foreign keys', t => {
+  const file=tempDatabase(t); let old=new DatabaseSync(file);
+  old.exec(`PRAGMA foreign_keys=ON;
+    CREATE TABLE projects(id INTEGER PRIMARY KEY,title TEXT NOT NULL,priority TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL DEFAULT 'normal' CHECK(kind IN ('normal','software'))) STRICT;
+    CREATE TABLE tasks(id INTEGER PRIMARY KEY,title TEXT NOT NULL,priority TEXT NOT NULL,project_id INTEGER REFERENCES projects(id),completed INTEGER NOT NULL DEFAULT 0,kind TEXT NOT NULL DEFAULT 'task' CHECK(kind IN ('task','feature')),description TEXT NOT NULL DEFAULT '',due_date TEXT,status TEXT NOT NULL DEFAULT 'planned',target_version TEXT,feature_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL) STRICT;
+    CREATE TABLE subtasks(id INTEGER PRIMARY KEY,task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,title TEXT NOT NULL,completed INTEGER NOT NULL DEFAULT 0) STRICT;
+    CREATE TABLE acceptance_criteria(id INTEGER PRIMARY KEY,task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,text TEXT NOT NULL,completed INTEGER NOT NULL DEFAULT 0,position INTEGER NOT NULL) STRICT;
+    CREATE TABLE task_dependencies(predecessor_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,successor_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,PRIMARY KEY(predecessor_id,successor_id)) STRICT;
+    INSERT INTO projects VALUES(1,'App','normal','Projekt','software');
+    INSERT INTO tasks VALUES(1,'Feature','normal',1,0,'feature','Beschreibung',NULL,'planned','v1',NULL),(2,'Aufgabe','normal',1,0,'task','',NULL,'planned',NULL,1);
+    INSERT INTO acceptance_criteria VALUES(1,1,'Kriterium',1,0);
+    INSERT INTO subtasks VALUES(1,2,'Unteraufgabe',0);
+    INSERT INTO task_dependencies VALUES(1,2);`); old.close();
+  let db=new PlannerDatabase(file); let w=db.read();
+  assert.equal(w.projects[0].kind,'software'); assert.equal(w.tasks.find(x=>x.id===2).featureId,1);
+  assert.equal(w.tasks.find(x=>x.id===1).criteria[0].completed,true); assert.deepEqual(w.tasks.find(x=>x.id===2).predecessorIds,[1]); assert.equal(w.subtasks[0].title,'Unteraufgabe');
+  db.saveTask(null,fields('Bugfix',{kind:'fix',projectId:1,targetVersion:'v2',criteria:[{id:null,text:'Fehler behoben',completed:true}]}));
+  const fix=find(db,'Bugfix').id; db.assignFeature(2,fix);
+  assert.throws(()=>db.saveTask(null,fields('Ungültig',{kind:'fix'})),/Softwareprojekt/);
+  db.close(); db=new PlannerDatabase(file); w=db.read();
+  assert.equal(w.tasks.find(x=>x.id===2).featureId,fix); assert.equal(w.tasks.find(x=>x.id===fix).targetVersion,'v2');
+  assert.equal(w.tasks.find(x=>x.id===fix).criteria[0].completed,true);
+  db.deleteTask(fix); assert.equal(db.read().tasks.find(x=>x.id===2).featureId,null); db.close();
+  old=new DatabaseSync(file); assert.equal(old.prepare('PRAGMA foreign_key_check').all().length,0); old.close();
+});
