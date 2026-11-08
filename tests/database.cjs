@@ -209,3 +209,30 @@ test('existing software features gain empty criteria and a target-version field 
   assert.equal(w.subtasks[0].title, 'Spalten auswählen');
   db.close();
 });
+
+test('deleting tasks and features removes only their own data and dependency links', t => {
+  const file = tempDatabase(t);
+  let db = new PlannerDatabase(file);
+  db.saveProject(null, {title:'Software', priority:'normal', description:'', kind:'software'});
+  const project = db.read().projects[0].id;
+  db.saveTask(null, fields('Vorgänger', {projectId:project}));
+  const pre = find(db,'Vorgänger').id;
+  db.saveTask(null, fields('Feature', {projectId:project,kind:'feature',targetVersion:'v1',predecessorIds:[pre],criteria:[{id:null,text:'Ergebnis prüfen',completed:false}]}));
+  const feature = find(db,'Feature').id;
+  db.addSubtask(feature,'Feature-Teilaufgabe');
+  db.saveTask(null, fields('Nachfolger', {projectId:project,predecessorIds:[feature]}));
+  const successor = find(db,'Nachfolger').id;
+  db.deleteTask(feature);
+  let workspace = db.read();
+  assert.equal(workspace.tasks.length,2); assert.equal(workspace.projects.length,1);
+  assert.deepEqual(find(db,'Vorgänger').successorIds,[]); assert.deepEqual(find(db,'Nachfolger').predecessorIds,[]);
+  assert.equal(workspace.subtasks.length,0);
+  assert.throws(() => db.deleteTask(feature),/nicht gefunden/);
+  assert.throws(() => db.deleteTask(0),/ungültig/);
+  db.addSubtask(pre,'Aufgaben-Teilaufgabe');
+  db.deleteTask(pre);
+  db.close(); db = new PlannerDatabase(file); workspace = db.read();
+  assert.deepEqual(workspace.tasks.map(task => task.id),[successor]);
+  assert.equal(workspace.subtasks.length,0); assert.equal(workspace.projects.length,1);
+  db.close();
+});

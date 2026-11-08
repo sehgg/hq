@@ -40,6 +40,12 @@
 
   <div id="notice" class="notice" role="status" aria-atomic="true" hidden></div>
 
+  <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
+    <div class="dialog-head"><h2 id="delete-title"></h2></div>
+    <div class="delete-content"><p id="delete-description"></p><p id="delete-error" class="editor-error" role="alert" hidden></p></div>
+    <div class="dialog-actions"><button type="button" class="button secondary" id="cancel-delete" autofocus>Abbrechen</button><button type="button" class="button danger" id="confirm-delete">Endgültig löschen</button></div>
+  </dialog>
+
   <dialog id="editor" aria-labelledby="editor-title">
     <form id="editor-form">
       <div class="dialog-head">

@@ -42,6 +42,7 @@ function setupDatabase(): void {
     store.saveTask(id, fields);
     return store.read();
   });
+  ipcMain.handle('task:delete', (_event, id: number) => { store.deleteTask(id); return store.read(); });
   ipcMain.handle('task:complete', (_event, id: number, completed: boolean) => {
     store.completeTask(id, completed);
     return store.read();

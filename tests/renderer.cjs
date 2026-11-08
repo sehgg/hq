@@ -22,7 +22,7 @@ function renderer(hq = { read: () => new Promise(() => {}) }) {
   class Option { constructor(text, value) { this.text = text; this.value = value; } }
   const context = { document, Option, Element, HTMLInputElement: Element, HTMLFormElement: Element, window: { hq, clearTimeout() {}, setTimeout() { return 0; } }, console };
   vm.createContext(context);
-  vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, orderTaskTree, openEditor, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = value; }, selected: () => [...selectedPredecessors] };`, context);
+  vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, orderTaskTree, openEditor, openDeleteDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = value; }, selected: () => [...selectedPredecessors] };`, context);
   const change = async target => { for (const handler of handlers.change ?? []) await handler({target}); };
   return { api: context.testApi, node: selector => document.querySelector(selector), click, change };
 }
@@ -203,5 +203,27 @@ test('feature editor and detail checklist save criteria and target version throu
   const detailCheck = node('#detail-check'); detailCheck.dataset.criterion=String(saved.criteria[0].id); detailCheck.checked=true; await change(detailCheck);
   db.close(); db = new PlannerDatabase(path);
   assert.deepEqual(db.read().tasks[0].criteria.map(c => c.completed), [true,false]);
+  db.close();
+});
+
+test('delete confirmation cancels safely and deletes a feature only after confirmation', async t => {
+  const { mkdtempSync, rmSync } = require('node:fs'); const { join } = require('node:path'); const { tmpdir } = require('node:os');
+  const { PlannerDatabase } = require('../dist/database');
+  const dir = mkdtempSync(join(tmpdir(),'hq-delete-')); t.after(() => rmSync(dir,{recursive:true,force:true}));
+  const db = new PlannerDatabase(join(dir,'hq.sqlite'));
+  db.saveProject(null,{title:'Software',kind:'software',description:'',priority:'normal'});
+  const project = db.read().projects[0].id;
+  db.saveTask(null,{title:'CSV',priority:'normal',description:'',kind:'feature',targetVersion:null,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]});
+  const feature = db.read().tasks[0];
+  let deletions=0;
+  const hq={read:()=>new Promise(()=>{}),deleteTask:async id=>{deletions++;db.deleteTask(id);return db.read();}};
+  const {api,node} = renderer(hq); api.setWorkspace(db.read()); api.showView(project); api.setTab('feature'); api.selectTask(feature.id);
+  assert.match(node('#details').innerHTML,/aria-label="Feature löschen"/);
+  api.openDeleteDialog(feature.id);
+  assert.equal(node('#delete-dialog').open,true); assert.match(node('#delete-description').textContent,/Akzeptanzkriterien/);
+  node('#cancel-delete').dispatch('click'); assert.equal(node('#delete-dialog').open,false); assert.equal(deletions,0);
+  api.openDeleteDialog(feature.id); await node('#confirm-delete').dispatchAsync('click');
+  assert.equal(deletions,1); assert.equal(node('#delete-dialog').open,false); assert.equal(node('#details').hidden,true);
+  assert.equal(db.read().tasks.length,0); assert.match(node('#content').innerHTML,/Noch keine Features/);
   db.close();
 });

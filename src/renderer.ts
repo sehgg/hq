@@ -14,6 +14,12 @@ interface Window {
   hq: HqApi;
 }
 
+const deleteDialog = document.querySelector<HTMLDialogElement>('#delete-dialog')!;
+const deleteTitle = document.querySelector<HTMLElement>('#delete-title')!;
+const deleteDescription = document.querySelector<HTMLElement>('#delete-description')!;
+const deleteError = document.querySelector<HTMLElement>('#delete-error')!;
+const confirmDelete = document.querySelector<HTMLButtonElement>('#confirm-delete')!;
+const cancelDelete = document.querySelector<HTMLButtonElement>('#cancel-delete')!;
 const details = document.querySelector<HTMLElement>('#details')!;
 const targetVersionField = document.querySelector<HTMLInputElement>('#entry-target-version')!;
 const criteriaField = document.querySelector<HTMLElement>('#entry-criteria')!;
@@ -291,7 +297,8 @@ function renderDetails(): void {
     <section><h3>Status</h3><p>${statusNames[task.status]}</p></section><section><h3>Fällig am</h3><p>${task.dueDate ? escapeHtml(task.dueDate.split('-').reverse().join('.')) : 'Kein Datum'}</p></section>
     <section><h3>Unteraufgaben</h3><ul class="detail-list">${subtasks.map(item => `<li><label><input type="checkbox" data-subtask="${item.id}" ${item.completed ? 'checked' : ''}> ${escapeHtml(item.title)}</label></li>`).join('')}</ul>
     <form id="subtask-form" class="subtask-form"><label class="sr-only" for="subtask-title">Neue Unteraufgabe</label><input id="subtask-title" maxlength="120" required placeholder="Neue Unteraufgabe"><button class="button compact" type="submit" aria-label="Unteraufgabe anlegen">+</button></form></section>
-    <section><h3>Vorgänger</h3><ul class="detail-list">${links(task.predecessorIds)}</ul></section><section><h3>Folgeaufgaben</h3><ul class="detail-list">${links(task.successorIds)}</ul></section></div>`;
+    <section><h3>Vorgänger</h3><ul class="detail-list">${links(task.predecessorIds)}</ul></section><section><h3>Folgeaufgaben</h3><ul class="detail-list">${links(task.successorIds)}</ul></section>
+    <button type="button" class="button danger" data-action="delete-task" data-id="${task.id}" aria-label="${task.kind === 'feature' ? 'Feature' : 'Aufgabe'} löschen">Löschen</button></div>`;
 }
 details.addEventListener('submit', async event => {
   if (!(event.target instanceof HTMLFormElement) || event.target.id !== 'subtask-form' || selectedTaskId === null || saving) return;
@@ -301,6 +308,44 @@ details.addEventListener('submit', async event => {
   try { workspace = await window.hq.addSubtask(selectedTaskId, input.value); render(); document.querySelector<HTMLInputElement>('#subtask-title')?.focus(); }
   catch (error) { announce(errorMessage(error), true); }
   finally { saving = false; }
+});
+
+
+function openDeleteDialog(id: number): void {
+  const task = workspace.tasks.find(item => item.id === id);
+  if (!task) return;
+  const kind = task.kind === 'feature' ? 'Feature' : 'Aufgabe';
+  deleteTitle.textContent = `${kind} löschen?`;
+  deleteDescription.textContent = `„${task.title}“ wird endgültig gelöscht. Unteraufgaben${task.kind === 'feature' ? ', Akzeptanzkriterien' : ''} und Verknüpfungen werden entfernt. Verknüpfte Einträge bleiben erhalten.`;
+  deleteError.hidden = true;
+  deleteDialog.showModal();
+  cancelDelete.focus();
+}
+cancelDelete.addEventListener('click', () => { if (!saving) deleteDialog.close(); });
+deleteDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+confirmDelete.addEventListener('click', async () => {
+  if (saving || selectedTaskId === null) return;
+  const task = workspace.tasks.find(item => item.id === selectedTaskId);
+  if (!task) return;
+  saving = true;
+  confirmDelete.disabled = true;
+  cancelDelete.disabled = true;
+  deleteError.hidden = true;
+  try {
+    workspace = await window.hq.deleteTask(task.id);
+    selectedTaskId = null;
+    deleteDialog.close();
+    render();
+    content.querySelector('h1')?.focus({ preventScroll: true });
+    announce(task.kind === 'feature' ? 'Feature gelöscht.' : 'Aufgabe gelöscht.');
+  } catch (error) {
+    deleteError.textContent = errorMessage(error);
+    deleteError.hidden = false;
+  } finally {
+    saving = false;
+    confirmDelete.disabled = false;
+    cancelDelete.disabled = false;
+  }
 });
 
 function showView(target: View): void {
@@ -442,6 +487,7 @@ document.addEventListener('click', event => {
   switch (target.dataset.action) {
     case 'tab-task': activeTab = 'task'; selectedTaskId = null; render(); break;
     case 'tab-feature': activeTab = 'feature'; selectedTaskId = null; render(); break;
+    case 'delete-task': openDeleteDialog(Number(target.dataset.id)); break;
     case 'show-task': selectedTaskId = Number(target.dataset.id); renderDetails(); break;
     case 'close-details': selectedTaskId = null; renderDetails(); break;
     case 'new-task': openEditor({ kind: 'task', id: null }); break;

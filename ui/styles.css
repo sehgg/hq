@@ -426,3 +426,8 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
 .criterion-check { flex: none; padding-top: 7px; }
 .criterion-text { flex: 1; min-width: 0; }
 .criterion-text input { width: 100%; min-width: 0; min-height: 36px; padding: 5px 8px; border: 1px solid var(--border-strong); background: var(--rail); color: var(--text); font: inherit; }
+.danger { color: var(--error); border-color: color-mix(in srgb, var(--error) 40%, var(--background)); }
+.danger:hover { background: color-mix(in srgb, var(--error) 14%, var(--background)); }
+.delete-content { padding: 16px; }
+.delete-content p { overflow-wrap: anywhere; }
+.delete-content .editor-error { margin: 0; }

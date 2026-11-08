@@ -88,6 +88,18 @@ export class PlannerDatabase {
    this.db.exec('COMMIT');
   } catch(error) { this.db.exec('ROLLBACK'); throw error; }
  }
+ deleteTask(id: number): void {
+  identifier(id);
+  this.db.exec('BEGIN');
+  try {
+   if (!this.db.prepare('SELECT 1 FROM tasks WHERE id=?').get(id)) throw new Error('Der Eintrag wurde nicht gefunden.');
+   this.db.prepare('DELETE FROM task_dependencies WHERE predecessor_id=? OR successor_id=?').run(id,id);
+   this.db.prepare('DELETE FROM subtasks WHERE task_id=?').run(id);
+   this.db.prepare('DELETE FROM acceptance_criteria WHERE task_id=?').run(id);
+   this.db.prepare('DELETE FROM tasks WHERE id=?').run(id);
+   this.db.exec('COMMIT');
+  } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+ }
  completeTask(id: number, completed: boolean): void {
   identifier(id); if (typeof completed !== 'boolean') throw new Error('Dieser Aufgabenstatus ist ungültig.');
   if (completed) this.ensureCanComplete(id); else this.ensureCanReopen(id);

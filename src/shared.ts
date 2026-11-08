@@ -15,6 +15,7 @@ export interface HqApi {
  saveProject(id: number | null, fields: ProjectFields): Promise<Workspace>;
  saveTask(id: number | null, fields: TaskFields): Promise<Workspace>;
  completeTask(id: number, completed: boolean): Promise<Workspace>;
+ deleteTask(id: number): Promise<Workspace>;
  addSubtask(taskId: number, title: string): Promise<Workspace>;
  completeSubtask(id: number, completed: boolean): Promise<Workspace>;
  completeCriterion(id: number, completed: boolean): Promise<Workspace>;
