@@ -34,3 +34,7 @@ The **Ideen** and **Recherche** navigation entries are placeholders for sections
 ## Planning releases
 
 Software projects have a **Releases** tab. Use **[ + ]** to create a version and **[ B ]** to edit an existing version, its optional due date, and its status. Releases can be planned, in progress, paused, or published. A release can be published only after all its assigned features are done; changing it back to an unpublished status makes it selectable again. Features and fixes can target an unpublished release in the same project. Publishing removes that version from new selections while retaining existing assignments and the release contents. Existing free-text target versions are migrated to planned releases when the database is upgraded. Select a release to open its details, edit it or delete it. Deleting a release removes its assignments but keeps its features and fixes.
+
+## Project deadlines
+
+A project can have an optional due date. Tasks, features, and fixes assigned to that project may be undated or due on or before the project deadline. When a new project deadline conflicts with existing entries, the editor lists the affected entries so their dates can be adjusted before saving.

@@ -20,6 +20,7 @@ export class PlannerDatabase {
    const pc = columns('projects'); const tc = columns('tasks');
    if (!pc.has('kind')) this.db.exec("ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'normal' CHECK (kind IN ('normal','software'))");
    if (!tc.has('kind')) this.db.exec("ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'task' CHECK (kind IN ('task','feature'))");
+   if (!pc.has('due_date')) this.db.exec('ALTER TABLE projects ADD COLUMN due_date TEXT');
    if (!pc.has('description')) this.db.exec("ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT ''");
    if (!tc.has('feature_id')) this.db.exec('ALTER TABLE tasks ADD COLUMN feature_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL');
    if (!tc.has('target_version')) this.db.exec('ALTER TABLE tasks ADD COLUMN target_version TEXT');
@@ -76,7 +77,7 @@ export class PlannerDatabase {
   finally { this.db.exec('PRAGMA foreign_keys = ON'); }
  }
  read(): Workspace {
-  const projects = this.db.prepare(`SELECT id, title, priority, description, kind FROM projects ORDER BY ${byPriority}, id DESC`).all() as unknown as Project[];
+  const projects = this.db.prepare(`SELECT id, title, priority, description, kind, due_date AS dueDate FROM projects ORDER BY ${byPriority}, id DESC`).all() as unknown as Project[];
   const releases = this.db.prepare('SELECT id, project_id AS projectId, version, due_date AS dueDate, status, published FROM releases ORDER BY id DESC').all() as unknown as Array<Omit<Release,'published'> & {published:number}>;
   const rows = this.db.prepare(`SELECT t.id, t.title, t.priority, t.description, t.kind, t.feature_id AS featureId, t.release_id AS releaseId, r.version AS targetVersion, t.project_id AS projectId, t.due_date AS dueDate, t.status, t.completed FROM tasks t LEFT JOIN releases r ON r.id=t.release_id ORDER BY t.due_date IS NULL, t.due_date ASC, CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, t.id DESC`).all() as unknown as Array<Omit<Task,'completed'|'predecessorIds'|'successorIds'|'criteria'> & {completed:number}>;
   const edges = this.db.prepare('SELECT predecessor_id AS predecessorId, successor_id AS successorId FROM task_dependencies').all() as unknown as {predecessorId:number; successorId:number}[];
@@ -86,11 +87,20 @@ export class PlannerDatabase {
  }
  saveProject(id: number | null, fields: ProjectFields): void {
   if (fields.kind !== 'normal' && fields.kind !== 'software') throw new Error('Der Projekttyp ist ungültig.');
-  const args = [title(fields.title), priority(fields.priority), description(fields.description), fields.kind] as const;
-  if (id === null) { this.db.prepare('INSERT INTO projects (title, priority, description, kind) VALUES (?, ?, ?, ?)').run(...args); return; }
+  const deadline = validDate(fields.dueDate ?? null);
+  const args = [title(fields.title), priority(fields.priority), description(fields.description), fields.kind, deadline] as const;
+  if (id === null) { this.db.prepare('INSERT INTO projects (title, priority, description, kind, due_date) VALUES (?, ?, ?, ?, ?)').run(...args); return; }
   identifier(id);
-  if (fields.kind === 'normal' && (this.db.prepare("SELECT 1 FROM tasks WHERE project_id=? AND kind IN ('feature','fix')").get(id) || this.db.prepare('SELECT 1 FROM releases WHERE project_id=?').get(id))) throw new Error('Verschiebe zuerst die Features und Fixes in ein anderes Softwareprojekt.');
-  if (!this.db.prepare('UPDATE projects SET title=?, priority=?, description=?, kind=? WHERE id=?').run(...args, id).changes) throw new Error('Das Projekt wurde nicht gefunden.');
+  this.db.exec('BEGIN IMMEDIATE');
+  try {
+   if (fields.kind === 'normal' && (this.db.prepare("SELECT 1 FROM tasks WHERE project_id=? AND kind IN ('feature','fix')").get(id) || this.db.prepare('SELECT 1 FROM releases WHERE project_id=?').get(id))) throw new Error('Verschiebe zuerst die Features und Fixes in ein anderes Softwareprojekt.');
+   if (deadline !== null) {
+    const conflicts = this.db.prepare('SELECT title, due_date AS dueDate FROM tasks WHERE project_id=? AND due_date>? ORDER BY due_date, id').all(id,deadline) as unknown as {title:string;dueDate:string}[];
+    if (conflicts.length) throw new Error('Diese Einträge liegen nach der Projektfrist: ' + conflicts.map(item => `${item.title} (${item.dueDate.split('-').reverse().join('.')})`).join('; '));
+   }
+   if (!this.db.prepare('UPDATE projects SET title=?, priority=?, description=?, kind=?, due_date=? WHERE id=?').run(...args, id).changes) throw new Error('Das Projekt wurde nicht gefunden.');
+   this.db.exec('COMMIT');
+  } catch (error) { this.db.exec('ROLLBACK'); throw error; }
  }
  createRelease(projectId: number, version: string, dueDate: string | null = null): void {
   identifier(projectId); const name = title(version); const date = validDate(dueDate);
@@ -156,8 +166,13 @@ export class PlannerDatabase {
   const due=validDate(fields.dueDate);
   if (!Array.isArray(fields.predecessorIds)) throw new Error('Die Vorgänger sind ungültig.');
   const predecessors = [...new Set(fields.predecessorIds.map(identifier))];
-  this.db.exec('BEGIN');
+  this.db.exec('BEGIN IMMEDIATE');
   try {
+   if (projectId !== null && due !== null) {
+    const project = this.db.prepare('SELECT due_date AS dueDate FROM projects WHERE id=?').get(projectId) as {dueDate:string | null} | undefined;
+    if (!project) throw new Error('Das Projekt wurde nicht gefunden.');
+    if (project.dueDate !== null && due > project.dueDate) throw new Error(`Das Fälligkeitsdatum darf nicht nach der Projektfrist am ${project.dueDate.split('-').reverse().join('.')} liegen.`);
+   }
    let taskId: number;
    if (id === null) { taskId=Number(this.db.prepare('INSERT INTO tasks (title,priority,description,project_id,due_date,status,completed,kind) VALUES (?,?,?,?,?,?,?,?)').run(name,rank,desc,projectId,due,'planned',0,fields.kind).lastInsertRowid); }
    else { taskId=identifier(id); if (!this.db.prepare('SELECT 1 FROM tasks WHERE id=?').get(taskId)) throw new Error('Die Aufgabe wurde nicht gefunden.'); }

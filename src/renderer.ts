@@ -64,6 +64,8 @@ const editor = document.querySelector<HTMLDialogElement>('#editor')!;
 const form = document.querySelector<HTMLFormElement>('#editor-form')!;
 const titleField = document.querySelector<HTMLInputElement>('#entry-title')!;
 const priorityField = document.querySelector<HTMLSelectElement>('#entry-priority')!;
+const projectDueField = document.querySelector<HTMLInputElement>('#entry-project-due')!;
+const projectDueConflictBox = document.querySelector<HTMLElement>('#project-due-conflicts')!;
 const projectKindField = document.querySelector<HTMLSelectElement>('#entry-project-kind')!;
 const projectField = document.querySelector<HTMLSelectElement>('#entry-project')!;
 const editorFields = document.querySelector<HTMLFieldSetElement>('#editor-fields')!;
@@ -87,7 +89,10 @@ let selectedPredecessors = new Set<number>();
 let draftCriteria: CriterionFields[] = [];
 const releaseStatusNames: Record<ReleaseStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', published: 'Veröffentlicht' };
 const statusNames: Record<TaskStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', done: 'Erledigt' };
-function errorMessage(error: unknown): string { return error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': Error: /, '') : 'Der Vorgang konnte nicht gespeichert werden.'; }
+function errorMessage(error: unknown): string {
+  const message = error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' ? error.message : '';
+  return message ? message.replace(/^Error invoking remote method '[^']+': Error: /, '') : 'Der Vorgang konnte nicht gespeichert werden.';
+}
 let noticeTimer: number | undefined;
 
 function escapeHtml(value: string): string {
@@ -401,7 +406,7 @@ function render(): void {
       project ? `Projekte / ${project.title}` : 'Posteingang',
       project ? (project.description ? escapeHtml(project.description).replaceAll('\n', '<br>') : 'Deine Aufgaben für dieses Projekt.') : 'Ein Ort für alle Aufgaben ohne Projekt.',
       editProject + (software && activeTab === 'releases' ? addButton('new-release', 'Neues Release') : addButton('new-task', software && activeTab === 'feature' ? 'Neues Feature' : software && activeTab === 'fix' ? 'Neuer Fix' : 'Neue Aufgabe')),
-      project ? `<div class="project-priority"><span>Projektpriorität</span>${priorityBadge(project.priority, 'Projektpriorität')}</div>` : '')}
+      project ? `<div class="project-priority"><span>Projektpriorität</span>${priorityBadge(project.priority, 'Projektpriorität')}</div>${project.dueDate ? `<div class="project-deadline">Projektfrist: ${escapeHtml(project.dueDate.split('-').reverse().join('.'))}</div>` : ''}` : '')}
     ${tabs}
     ${software && activeTab === 'releases' ? releasePanel(project!) : taskPanel(project)}`;
 }
@@ -524,6 +529,9 @@ function openEditor(mode: EditorMode): void {
   const isFeature = isTask && editorTaskKind !== 'task';
   const isFix = isTask && editorTaskKind === 'fix';
   document.querySelector<HTMLElement>('#project-kind-field')!.hidden = isTask;
+  document.querySelector<HTMLElement>('#project-due-field')!.hidden = isTask;
+  projectDueField.value = !isTask ? ((entry as Project | undefined)?.dueDate ?? '') : '';
+  renderProjectDueConflicts();
   document.querySelector<HTMLElement>('#feature-fields')!.hidden = !isFeature;
   document.querySelector('#description-label')!.textContent = isFeature ? 'Beschreibung und Nutzen' : 'Beschreibung';
 
@@ -562,6 +570,21 @@ function openEditor(mode: EditorMode): void {
 
 
 
+
+
+function projectDueConflicts(): Task[] {
+  if (!editing || editing.kind !== 'project' || editing.id === null || !projectDueField.value) return [];
+  const deadline = projectDueField.value;
+  return workspace.tasks.filter(task => task.projectId === editing!.id && task.dueDate !== null && task.dueDate > deadline)
+    .sort((a, b) => a.dueDate!.localeCompare(b.dueDate!) || a.id - b.id);
+}
+function renderProjectDueConflicts(): void {
+  const conflicts = projectDueConflicts();
+  projectDueConflictBox.hidden = conflicts.length === 0;
+  projectDueConflictBox.innerHTML = conflicts.length ? `<p>Diese Einträge sind nach der Projektfrist fällig. Schließe den Dialog und passe ihre Fälligkeiten an:</p><ul>${conflicts.map(task => `<li>${task.kind === 'feature' ? 'Feature' : task.kind === 'fix' ? 'Fix' : 'Aufgabe'}: ${escapeHtml(task.title)} · ${escapeHtml(task.dueDate!.split('-').reverse().join('.'))}</li>`).join('')}</ul>` : '';
+}
+projectDueField.addEventListener('input', renderProjectDueConflicts);
+projectDueField.addEventListener('change', renderProjectDueConflicts);
 
 function updateEditorFeatures(show: boolean, selected: number | null): void {
   const projectId = projectField.value ? Number(projectField.value) : null;
@@ -781,6 +804,13 @@ form.addEventListener('submit', async event => {
     return;
   }
 
+  if (editing.kind === 'project' && projectDueConflicts().length) {
+    renderProjectDueConflicts();
+    editorError.textContent = 'Passe zuerst die Fälligkeiten der aufgeführten Einträge an.';
+    editorError.hidden = false;
+    projectDueField.focus();
+    return;
+  }
   const fields = { title, priority: priorityField.value as Priority, description: descriptionField.value };
   const mode = editing;
   const projectId = projectField.value ? Number(projectField.value) : null;
@@ -791,7 +821,7 @@ form.addEventListener('submit', async event => {
   try {
     if (mode.kind === 'project') {
       const previousIds = new Set(workspace.projects.map(project => project.id));
-      workspace = await window.hq.saveProject(mode.id, { ...fields, kind: projectKindField.value as ProjectKind });
+      workspace = await window.hq.saveProject(mode.id, { ...fields, kind: projectKindField.value as ProjectKind, dueDate: projectDueField.value || null });
       editing = null;
       editor.close();
       const newProject = workspace.projects.find(project => !previousIds.has(project.id));

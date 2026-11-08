@@ -134,6 +134,41 @@ test('software projects separate tasks and features and normal projects have one
   assert.equal(node('#project-kind-field').hidden, false);
 });
 
+test('project deadline editor lists conflicts and saves once their dates are corrected', async t => {
+  const { mkdtempSync, rmSync } = require('node:fs');
+  const { join } = require('node:path');
+  const { tmpdir } = require('node:os');
+  const { PlannerDatabase } = require('../dist/database');
+  const dir = mkdtempSync(join(tmpdir(), 'hq-deadline-renderer-'));
+  t.after(() => rmSync(dir, {recursive:true, force:true}));
+  const db = new PlannerDatabase(join(dir, 'hq.sqlite'));
+  t.after(() => db.close());
+  db.saveProject(null, {title:'App', kind:'software', priority:'normal', description:'', dueDate:'2026-12-31'});
+  const project = db.read().projects[0].id;
+  for (const kind of ['task', 'feature', 'fix']) {
+    db.saveTask(null, {title:`Später ${kind}`, kind, projectId:project, priority:'normal', description:'', dueDate:'2026-12-15', status:'planned', predecessorIds:[], criteria:[], featureId:null, releaseId:null});
+  }
+  const hq = {read:() => new Promise(() => {}), saveProject:async (id, fields) => {db.saveProject(id, fields); return db.read();}};
+  const {api, node} = renderer(hq);
+  api.setWorkspace(db.read()); api.showView(project); api.openEditor({kind:'project', id:project});
+  node('#entry-project-due').value = '2026-11-30'; node('#entry-project-due').dispatch('input');
+  const conflicts = node('#project-due-conflicts');
+  assert.equal(conflicts.hidden, false);
+  for (const text of ['Aufgabe: Später task', 'Feature: Später feature', 'Fix: Später fix', '15.12.2026']) assert.ok(conflicts.innerHTML.includes(text));
+  const submit = () => node('#editor-form').dispatchAsync('submit', {preventDefault() {}});
+  await submit();
+  assert.equal(db.read().projects[0].dueDate, '2026-12-31');
+  assert.match(node('#editor-error').textContent, /Fälligkeiten/);
+  node('#cancel-editor').dispatch('click');
+  for (const item of db.read().tasks) db.saveTask(item.id, {...item, dueDate:'2026-11-30'});
+  api.setWorkspace(db.read()); api.openEditor({kind:'project', id:project});
+  node('#entry-project-due').value = '2026-11-30'; node('#entry-project-due').dispatch('input');
+  assert.equal(conflicts.hidden, true);
+  await submit();
+  assert.equal(db.read().projects[0].dueDate, '2026-11-30');
+  assert.match(node('#content').innerHTML, /Projektfrist: 30\.11\.2026/);
+});
+
 test('editor creates a software project, a task and a feature and reloads edited data', async t => {
   const { mkdtempSync, rmSync } = require('node:fs');
   const { join } = require('node:path');

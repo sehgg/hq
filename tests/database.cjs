@@ -27,7 +27,7 @@ test('migration preserves projects, tasks and their completed states across a re
   const file = tempDatabase(t, true);
   let db = new PlannerDatabase(file);
   let workspace = db.read();
-  assert.deepEqual(workspace.projects.map(project => ({...project})), [{ id: 1, title: 'Vorhandenes Projekt', priority: 'high', description: '', kind: 'normal' }]);
+  assert.deepEqual(workspace.projects.map(project => ({...project})), [{ id: 1, title: 'Vorhandenes Projekt', priority: 'high', description: '', kind: 'normal', dueDate: null }]);
   assert.equal(find(db, 'Offen').status, 'planned');
   assert.equal(find(db, 'Alt erledigt').status, 'done');
   db.close(); db = new PlannerDatabase(file); workspace = db.read();
@@ -461,4 +461,36 @@ test('legacy planned and published release statuses are migrated without changin
   db=new PlannerDatabase(file); const w=db.read();
   assert.equal(w.releases.find(r=>r.id===v1).status,'published'); assert.equal(w.releases.find(r=>r.version==='v2').status,'planned');
   assert.equal(w.tasks[0].releaseId,v1); assert.equal(w.tasks[0].targetVersion,'v1'); db.close();
+});
+
+test('project deadline accepts the boundary and enforces tasks, features, fixes and moves', t => {
+  const file=tempDatabase(t); let db=new PlannerDatabase(file);
+  db.saveProject(null,{title:'Fristprojekt',kind:'software',priority:'normal',description:'',dueDate:'2026-11-30'});
+  db.saveProject(null,{title:'Offen',kind:'software',priority:'normal',description:'',dueDate:null});
+  const project=db.read().projects.find(p=>p.title==='Fristprojekt').id, other=db.read().projects.find(p=>p.title==='Offen').id;
+  for(const kind of ['task','feature','fix']) {
+    db.saveTask(null,fields(`${kind} am Stichtag`,{kind,projectId:project,dueDate:'2026-11-30'}));
+    db.saveTask(null,fields(`${kind} ohne Termin`,{kind,projectId:project,dueDate:null}));
+    assert.throws(()=>db.saveTask(null,fields(`${kind} zu spät`,{kind,projectId:project,dueDate:'2026-12-01'})),/Projektfrist am 30\.11\.2026/);
+    const existing=find(db,`${kind} am Stichtag`);
+    assert.throws(()=>db.saveTask(existing.id,fields(existing.title,{kind,projectId:project,dueDate:'2026-12-01'})),/Projektfrist/);
+    assert.equal(find(db,existing.title).dueDate,'2026-11-30');
+    db.saveTask(null,fields(`${kind} verschieben`,{kind,projectId:other,dueDate:'2026-12-01'}));
+    const moved=find(db,`${kind} verschieben`);
+    assert.throws(()=>db.saveTask(moved.id,fields(moved.title,{kind,projectId:project,dueDate:'2026-12-01'})),/Projektfrist/);
+    assert.equal(find(db,moved.title).projectId,other);
+  }
+  db.close(); db=new PlannerDatabase(file); assert.equal(db.read().projects.find(p=>p.id===project).dueDate,'2026-11-30'); db.close();
+});
+
+test('shortening a project deadline lists every conflicting entry and saves after dates are fixed', t => {
+  const file=tempDatabase(t); const db=new PlannerDatabase(file);
+  db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:'',dueDate:'2026-12-31'}); const project=db.read().projects[0].id;
+  for(const kind of ['task','feature','fix']) db.saveTask(null,fields(`Später ${kind}`,{kind,projectId:project,dueDate:'2026-12-15'}));
+  const update={title:'App neu',kind:'software',priority:'normal',description:'',dueDate:'2026-11-30'};
+  assert.throws(()=>db.saveProject(project,update),error=>['Später task','Später feature','Später fix','15.12.2026'].every(text=>error.message.includes(text)));
+  assert.equal(db.read().projects[0].title,'App'); assert.equal(db.read().projects[0].dueDate,'2026-12-31');
+  for(const item of db.read().tasks) db.saveTask(item.id,{...item,dueDate:'2026-11-30'});
+  db.saveProject(project,update); assert.equal(db.read().projects[0].dueDate,'2026-11-30');
+  db.saveProject(project,{...update,dueDate:null}); assert.equal(db.read().projects[0].dueDate,null); db.close();
 });

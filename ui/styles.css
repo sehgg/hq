@@ -441,3 +441,7 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
 .release-due { display: block; color: var(--muted); font-size: 11px; }
 .release-open { min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; overflow-wrap: anywhere; }
 .release-open:hover strong { color: var(--accent-primary); text-decoration: underline; }
+.project-deadline { grid-column: 2; margin-top: 6px; color: var(--secondary); font-size: 12px; }
+.project-due-conflicts { margin-top: 8px; padding: 8px; border: 1px solid var(--border-strong); color: var(--error); font-size: 12px; overflow-wrap: anywhere; }
+.project-due-conflicts p { margin: 0 0 5px; }
+.project-due-conflicts ul { margin: 0; padding-left: 20px; }
