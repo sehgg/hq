@@ -20,13 +20,13 @@ function renderer(hq = { read: () => new Promise(() => {}) }) {
   const document = { querySelector(selector) { if (!nodes.has(selector)) nodes.set(selector, new Element()); return nodes.get(selector); }, addEventListener(type, handler) { (handlers[type] ??= []).push(handler); } };
   const click = action => { const target = new Element(); target.dataset.action = action; for (const handler of handlers.click ?? []) handler({ target }); };
   class Option { constructor(text, value) { this.text = text; this.value = value; } }
-  const context = { document, Option, Element, HTMLInputElement: Element, HTMLFormElement: Element, window: { hq, clearTimeout() {}, setTimeout() { return 0; } }, console };
+  const context = { document, Option, Element, HTMLInputElement: Element, HTMLSelectElement: Element, HTMLFormElement: Element, window: { hq, clearTimeout() {}, setTimeout() { return 0; } }, console };
   vm.createContext(context);
-  vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, orderTaskTree, openEditor, openDeleteDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = value; }, selected: () => [...selectedPredecessors] };`, context);
+  vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, orderTaskTree, openEditor, openDeleteDialog, openFeatureTaskDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = value; }, selected: () => [...selectedPredecessors] };`, context);
   const change = async target => { for (const handler of handlers.change ?? []) await handler({target}); };
   return { api: context.testApi, node: selector => document.querySelector(selector), click, change };
 }
-const task = (id, title, projectId, overrides = {}) => ({ id, title, projectId, priority:'normal', description:'', kind:'task', targetVersion:null, criteria:[], dueDate:null, status:'planned', completed:false, predecessorIds:[], successorIds:[], ...overrides });
+const task = (id, title, projectId, overrides = {}) => ({ id, title, projectId, priority:'normal', description:'', kind:'task', featureId:null, targetVersion:null, criteria:[], dueDate:null, status:'planned', completed:false, predecessorIds:[], successorIds:[], ...overrides });
 
 test('task rows expose every status and mark cross-project dependencies without changing the title', () => {
   const { api } = renderer();
@@ -213,7 +213,7 @@ test('delete confirmation cancels safely and deletes a feature only after confir
   const db = new PlannerDatabase(join(dir,'hq.sqlite'));
   db.saveProject(null,{title:'Software',kind:'software',description:'',priority:'normal'});
   const project = db.read().projects[0].id;
-  db.saveTask(null,{title:'CSV',priority:'normal',description:'',kind:'feature',targetVersion:null,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]});
+  db.saveTask(null,{title:'CSV',priority:'normal',description:'',kind:'feature',featureId:null,targetVersion:null,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]});
   const feature = db.read().tasks[0];
   let deletions=0;
   const hq={read:()=>new Promise(()=>{}),deleteTask:async id=>{deletions++;db.deleteTask(id);return db.read();}};
@@ -225,5 +225,39 @@ test('delete confirmation cancels safely and deletes a feature only after confir
   api.openDeleteDialog(feature.id); await node('#confirm-delete').dispatchAsync('click');
   assert.equal(deletions,1); assert.equal(node('#delete-dialog').open,false); assert.equal(node('#details').hidden,true);
   assert.equal(db.read().tasks.length,0); assert.match(node('#content').innerHTML,/Noch keine Features/);
+  db.close();
+});
+
+test('feature details create and assign tasks and reflect their independent status after restart', async t => {
+  const { mkdtempSync, rmSync }=require('node:fs'); const { join }=require('node:path'); const { tmpdir }=require('node:os');
+  const { PlannerDatabase }=require('../dist/database'); const dir=mkdtempSync(join(tmpdir(),'hq-membership-'));
+  t.after(()=>rmSync(dir,{recursive:true,force:true})); const path=join(dir,'hq.sqlite'); let db=new PlannerDatabase(path);
+  db.saveProject(null,{title:'Software',priority:'normal',description:'',kind:'software'});
+  const project=db.read().projects[0].id;
+  const base={priority:'normal',description:'',featureId:null,targetVersion:null,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]};
+  db.saveTask(null,{...base,title:'Feature XY',kind:'feature'}); const feature=db.read().tasks.find(x=>x.kind==='feature').id;
+  db.saveTask(null,{...base,title:'Vorhanden',kind:'task'}); const existing=db.read().tasks.find(x=>x.title==='Vorhanden').id;
+  const hq={read:()=>new Promise(()=>{}),saveTask:async(id,fields)=>{db.saveTask(id,fields);return db.read();},assignFeature:async(id,fid)=>{db.assignFeature(id,fid);return db.read();},completeTask:async(id,done)=>{db.completeTask(id,done);return db.read();}};
+  const {api,node,change}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); api.setTab('feature'); api.selectTask(feature);
+  assert.match(node('#details').innerHTML,/Zugehörige Aufgaben/); assert.match(node('#details').innerHTML,/data-action="add-feature-task"/);
+  api.openFeatureTaskDialog(); assert.equal(node('#feature-task-dialog').open,true);
+  assert.deepEqual(node('#existing-feature-task').children.map(option=>option.text),['Aufgabe auswählen','Vorhanden']);
+  node('#new-feature-task').dispatch('click'); assert.equal(node('#editor-label').textContent,'Aufgabe');
+  assert.equal(node('#entry-task-feature').value,String(feature));
+  node('#entry-title').value='Feature XY definieren'; node('#entry-priority').value='normal'; node('#entry-status').value='planned';
+  await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
+  let created=db.read().tasks.find(item=>item.title==='Feature XY definieren'); assert.equal(created.featureId,feature);
+  assert.match(node('#details').innerHTML,/Feature XY definieren · Geplant/);
+  api.openFeatureTaskDialog(); node('#existing-feature-task').value=String(existing); node('#existing-feature-task').dispatch('change');
+  await node('#assign-feature-task').dispatchAsync('click'); assert.equal(db.read().tasks.find(x=>x.id===existing).featureId,feature);
+  api.showView(project); assert.match(node('#content').innerHTML,/Feature XY definieren/);
+  const checkbox=node('#membership-checkbox'); checkbox.dataset.complete=String(created.id); checkbox.checked=true; await change(checkbox);
+  api.setTab('feature'); api.selectTask(feature); assert.match(node('#details').innerHTML,/Feature XY definieren · Erledigt/);
+  assert.equal(db.read().tasks.find(x=>x.id===feature).status,'planned');
+  db.close(); db=new PlannerDatabase(path); api.setWorkspace(db.read()); api.selectTask(feature);
+  assert.match(node('#details').innerHTML,/Feature XY definieren · Erledigt/);
+  api.selectTask(created.id); assert.match(node('#details').innerHTML,/Zugehöriges Feature/); assert.match(node('#details').innerHTML,/Feature XY/);
+  const selector=node('#membership-select'); selector.dataset.featureAssignment=String(created.id); selector.value=''; await change(selector);
+  assert.equal(db.read().tasks.find(x=>x.id===created.id).featureId,null);
   db.close();
 });

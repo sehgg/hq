@@ -19,6 +19,7 @@ export class PlannerDatabase {
    if (!pc.has('kind')) this.db.exec("ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'normal' CHECK (kind IN ('normal','software'))");
    if (!tc.has('kind')) this.db.exec("ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'task' CHECK (kind IN ('task','feature'))");
    if (!pc.has('description')) this.db.exec("ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+   if (!tc.has('feature_id')) this.db.exec('ALTER TABLE tasks ADD COLUMN feature_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL');
    if (!tc.has('target_version')) this.db.exec('ALTER TABLE tasks ADD COLUMN target_version TEXT');
    if (!tc.has('description')) this.db.exec("ALTER TABLE tasks ADD COLUMN description TEXT NOT NULL DEFAULT ''");
    if (!tc.has('due_date')) this.db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
@@ -30,7 +31,7 @@ export class PlannerDatabase {
  }
  read(): Workspace {
   const projects = this.db.prepare(`SELECT id, title, priority, description, kind FROM projects ORDER BY ${byPriority}, id DESC`).all() as unknown as Project[];
-  const rows = this.db.prepare(`SELECT id, title, priority, description, kind, target_version AS targetVersion, project_id AS projectId, due_date AS dueDate, status, completed FROM tasks ORDER BY due_date IS NULL, due_date ASC, ${byPriority}, id DESC`).all() as unknown as Array<Omit<Task,'completed'|'predecessorIds'|'successorIds'|'criteria'> & {completed:number}>;
+  const rows = this.db.prepare(`SELECT id, title, priority, description, kind, feature_id AS featureId, target_version AS targetVersion, project_id AS projectId, due_date AS dueDate, status, completed FROM tasks ORDER BY due_date IS NULL, due_date ASC, ${byPriority}, id DESC`).all() as unknown as Array<Omit<Task,'completed'|'predecessorIds'|'successorIds'|'criteria'> & {completed:number}>;
   const edges = this.db.prepare('SELECT predecessor_id AS predecessorId, successor_id AS successorId FROM task_dependencies').all() as unknown as {predecessorId:number; successorId:number}[];
   const criteria = this.db.prepare('SELECT id, task_id AS taskId, text, completed FROM acceptance_criteria ORDER BY position, id').all() as unknown as {id:number; taskId:number; text:string; completed:number}[];
   const subs = this.db.prepare('SELECT id, task_id AS taskId, title, completed FROM subtasks ORDER BY id').all() as unknown as Array<Omit<Subtask,'completed'> & {completed:number}>;
@@ -64,6 +65,8 @@ export class PlannerDatabase {
   });
   const existingIds = criteria.filter(c => c.id !== null).map(c => c.id);
   if (new Set(existingIds).size !== existingIds.length) throw new Error('Ein Akzeptanzkriterium wurde mehrfach angegeben.');
+  const featureId = fields.featureId === null ? null : identifier(fields.featureId);
+  if (featureId !== null && (featureId === id || fields.kind !== 'task' || projectId === null || !this.db.prepare(`SELECT 1 FROM tasks f JOIN projects p ON p.id=f.project_id WHERE f.id=? AND f.kind='feature' AND f.project_id=? AND p.kind='software'`).get(featureId,projectId))) throw new Error('Das Feature muss zum selben Softwareprojekt gehören.');
   const due=fields.dueDate;
   if (due !== null && (typeof due !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(due) || !Number.isFinite(Date.parse(due)) || new Date(due).toISOString().slice(0,10)!==due)) throw new Error('Das Fälligkeitsdatum ist ungültig.');
   if (!Array.isArray(fields.predecessorIds)) throw new Error('Die Vorgänger sind ungültig.');
@@ -73,6 +76,7 @@ export class PlannerDatabase {
    let taskId: number;
    if (id === null) { taskId=Number(this.db.prepare('INSERT INTO tasks (title,priority,description,project_id,due_date,status,completed,kind) VALUES (?,?,?,?,?,?,?,?)').run(name,rank,desc,projectId,due,'planned',0,fields.kind).lastInsertRowid); }
    else { taskId=identifier(id); if (!this.db.prepare('SELECT 1 FROM tasks WHERE id=?').get(taskId)) throw new Error('Die Aufgabe wurde nicht gefunden.'); }
+   if (id !== null && this.db.prepare("SELECT 1 FROM tasks WHERE feature_id=?").get(taskId) && (fields.kind !== 'feature' || !this.db.prepare("SELECT 1 FROM tasks WHERE id=? AND project_id=? AND kind='feature'").get(taskId,projectId))) throw new Error('Löse zuerst die Zuordnung der zugehörigen Aufgaben.');
    for (const criterion of criteria) if (criterion.id !== null && !this.db.prepare('SELECT 1 FROM acceptance_criteria WHERE id=? AND task_id=?').get(criterion.id, taskId)) throw new Error('Das Akzeptanzkriterium wurde nicht gefunden.');
    if (state !== 'done') this.ensureCanReopen(taskId);
    this.db.prepare('DELETE FROM task_dependencies WHERE successor_id=?').run(taskId);
@@ -81,7 +85,7 @@ export class PlannerDatabase {
     this.db.prepare('INSERT INTO task_dependencies (predecessor_id,successor_id) VALUES (?,?)').run(predecessor,taskId);
    }
    if (state === 'done') this.ensureCanComplete(taskId);
-   this.db.prepare('UPDATE tasks SET title=?, priority=?, description=?, project_id=?, due_date=?, status=?, completed=?, kind=?, target_version=? WHERE id=?').run(name,rank,desc,projectId,due,state,Number(state==='done'),fields.kind,version,taskId);
+   this.db.prepare('UPDATE tasks SET title=?, priority=?, description=?, project_id=?, due_date=?, status=?, completed=?, kind=?, target_version=?, feature_id=? WHERE id=?').run(name,rank,desc,projectId,due,state,Number(state==='done'),fields.kind,version,featureId,taskId);
    this.db.prepare('DELETE FROM acceptance_criteria WHERE task_id=?').run(taskId);
    for (const [position, criterion] of criteria.entries()) if (criterion.id !== null) this.db.prepare('INSERT INTO acceptance_criteria (id,task_id,text,completed,position) VALUES (?,?,?,?,?)').run(criterion.id,taskId,criterion.text,Number(criterion.completed),position);
    for (const [position, criterion] of criteria.entries()) if (criterion.id === null) this.db.prepare('INSERT INTO acceptance_criteria (task_id,text,completed,position) VALUES (?,?,?,?)').run(taskId,criterion.text,Number(criterion.completed),position);
@@ -93,12 +97,21 @@ export class PlannerDatabase {
   this.db.exec('BEGIN');
   try {
    if (!this.db.prepare('SELECT 1 FROM tasks WHERE id=?').get(id)) throw new Error('Der Eintrag wurde nicht gefunden.');
+   this.db.prepare('UPDATE tasks SET feature_id=NULL WHERE feature_id=?').run(id);
    this.db.prepare('DELETE FROM task_dependencies WHERE predecessor_id=? OR successor_id=?').run(id,id);
    this.db.prepare('DELETE FROM subtasks WHERE task_id=?').run(id);
    this.db.prepare('DELETE FROM acceptance_criteria WHERE task_id=?').run(id);
    this.db.prepare('DELETE FROM tasks WHERE id=?').run(id);
    this.db.exec('COMMIT');
   } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+ }
+ assignFeature(taskId: number, featureId: number | null): void {
+  identifier(taskId);
+  if (featureId !== null) identifier(featureId);
+  const task = this.db.prepare("SELECT project_id AS projectId FROM tasks WHERE id=? AND kind='task'").get(taskId) as {projectId:number | null} | undefined;
+  if (!task) throw new Error('Die Aufgabe wurde nicht gefunden.');
+  if (featureId !== null && (task.projectId === null || !this.db.prepare("SELECT 1 FROM tasks f JOIN projects p ON p.id=f.project_id WHERE f.id=? AND f.kind='feature' AND f.project_id=? AND p.kind='software'").get(featureId,task.projectId))) throw new Error('Das Feature muss zum selben Softwareprojekt gehören.');
+  this.db.prepare('UPDATE tasks SET feature_id=? WHERE id=?').run(featureId,taskId);
  }
  completeTask(id: number, completed: boolean): void {
   identifier(id); if (typeof completed !== 'boolean') throw new Error('Dieser Aufgabenstatus ist ungültig.');

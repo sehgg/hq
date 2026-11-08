@@ -6,7 +6,7 @@ const { join } = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { PlannerDatabase } = require('../dist/database.js');
 
-const fields = (title, extra = {}) => ({ title, priority: 'normal', description: '', kind: 'task', targetVersion: null, criteria: [], projectId: null, dueDate: null, status: 'planned', predecessorIds: [], ...extra });
+const fields = (title, extra = {}) => ({ title, priority: 'normal', description: '', kind: 'task', featureId: null, targetVersion: null, criteria: [], projectId: null, dueDate: null, status: 'planned', predecessorIds: [], ...extra });
 function tempDatabase(t, legacy = false) {
   const dir = mkdtempSync(join(tmpdir(), 'hq-test-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -234,5 +234,34 @@ test('deleting tasks and features removes only their own data and dependency lin
   db.close(); db = new PlannerDatabase(file); workspace = db.read();
   assert.deepEqual(workspace.tasks.map(task => task.id),[successor]);
   assert.equal(workspace.subtasks.length,0); assert.equal(workspace.projects.length,1);
+  db.close();
+});
+
+test('feature membership is persistent, project-scoped and independent of status and dependencies', t => {
+  const file=tempDatabase(t); let db=new PlannerDatabase(file);
+  db.saveProject(null,{title:'App A',kind:'software',priority:'normal',description:''});
+  db.saveProject(null,{title:'App B',kind:'software',priority:'normal',description:''});
+  const a=db.read().projects.find(p=>p.title==='App A').id, b=db.read().projects.find(p=>p.title==='App B').id;
+  db.saveTask(null,fields('Feature XY',{kind:'feature',projectId:a}));
+  db.saveTask(null,fields('Anderes Feature',{kind:'feature',projectId:b}));
+  const feature=find(db,'Feature XY').id, other=find(db,'Anderes Feature').id;
+  db.saveTask(null,fields('Feature XY definieren',{projectId:a,featureId:feature}));
+  const task=find(db,'Feature XY definieren').id;
+  db.saveTask(null,fields('Vorhandene Aufgabe',{projectId:a}));
+  const existing=find(db,'Vorhandene Aufgabe').id;
+  db.assignFeature(existing,feature);
+  assert.throws(()=>db.assignFeature(task,other),/selben Softwareprojekt/);
+  assert.throws(()=>db.assignFeature(feature,feature),/Aufgabe/);
+  assert.throws(()=>db.saveTask(task,fields('Feature XY definieren',{projectId:b,featureId:feature})),/selben Softwareprojekt/);
+  assert.throws(()=>db.saveTask(feature,fields('Feature XY',{kind:'feature',projectId:b})),/Zuordnung/);
+  db.completeTask(task,true);
+  assert.equal(find(db,'Feature XY').status,'planned');
+  assert.deepEqual(find(db,'Feature XY definieren').predecessorIds,[]);
+  db.close(); db=new PlannerDatabase(file);
+  assert.equal(find(db,'Feature XY definieren').featureId,feature);
+  assert.equal(find(db,'Vorhandene Aufgabe').featureId,feature);
+  db.assignFeature(existing,null); assert.equal(find(db,'Vorhandene Aufgabe').featureId,null);
+  db.deleteTask(feature); assert.equal(find(db,'Feature XY definieren').featureId,null);
+  assert.equal(find(db,'Feature XY definieren').status,'done');
   db.close();
 });

@@ -431,3 +431,5 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
 .delete-content { padding: 16px; }
 .delete-content p { overflow-wrap: anywhere; }
 .delete-content .editor-error { margin: 0; }
+.association-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.association-header h3 { margin: 0; }
