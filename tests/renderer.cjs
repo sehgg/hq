@@ -18,15 +18,15 @@ function renderer(hq = { read: () => new Promise(() => {}) }) {
   const nodes = new Map();
   const handlers = {};
   const document = { querySelector(selector) { if (!nodes.has(selector)) nodes.set(selector, new Element()); return nodes.get(selector); }, addEventListener(type, handler) { (handlers[type] ??= []).push(handler); } };
-  const click = action => { const target = new Element(); target.dataset.action = action; for (const handler of handlers.click ?? []) handler({ target }); };
+  const click = (action, id) => { const target = new Element(); target.dataset.action = action; if (id !== undefined) target.dataset.id = String(id); for (const handler of handlers.click ?? []) handler({ target }); };
   class Option { constructor(text, value) { this.text = text; this.value = value; } }
   const context = { document, Option, Element, HTMLInputElement: Element, HTMLSelectElement: Element, HTMLFormElement: Element, window: { hq, clearTimeout() {}, setTimeout() { return 0; } }, console };
   vm.createContext(context);
-  vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, orderTaskTree, openEditor, openDeleteDialog, openFeatureTaskDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = value; }, selected: () => [...selectedPredecessors] };`, context);
+  vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, orderTaskTree, openEditor, openDeleteDialog, openFeatureTaskDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = { releases: [], ...value }; }, selected: () => [...selectedPredecessors] };`, context);
   const change = async target => { for (const handler of handlers.change ?? []) await handler({target}); };
   return { api: context.testApi, node: selector => document.querySelector(selector), click, change };
 }
-const task = (id, title, projectId, overrides = {}) => ({ id, title, projectId, priority:'normal', description:'', kind:'task', featureId:null, targetVersion:null, criteria:[], dueDate:null, status:'planned', completed:false, predecessorIds:[], successorIds:[], ...overrides });
+const task = (id, title, projectId, overrides = {}) => ({ id, title, projectId, priority:'normal', description:'', kind:'task', featureId:null, releaseId:null, targetVersion:null, criteria:[], dueDate:null, status:'planned', completed:false, predecessorIds:[], successorIds:[], ...overrides });
 
 test('task rows expose every status and mark cross-project dependencies without changing the title', () => {
   const { api } = renderer();
@@ -180,9 +180,10 @@ test('feature editor and detail checklist save criteria and target version throu
   const dir = mkdtempSync(join(tmpdir(),'hq-criteria-')); t.after(() => rmSync(dir,{recursive:true,force:true}));
   const path = join(dir,'hq.sqlite'); let db = new PlannerDatabase(path);
   db.saveProject(null,{title:'Software',kind:'software',description:'',priority:'normal'});
+  db.createRelease(db.read().projects[0].id,'v0.4.0'); const releaseId=db.read().releases[0].id;
   const hq = {read:() => new Promise(() => {}), saveTask:async (id,fields) => {db.saveTask(id,fields); return db.read();}, completeCriterion:async (id,checked) => {db.completeCriterion(id,checked); return db.read();}};
   const {api,node,change} = renderer(hq); api.setWorkspace(db.read()); api.showView(db.read().projects[0].id); api.setTab('feature');
-  api.openEditor({kind:'task',id:null}); node('#entry-title').value='CSV exportieren'; node('#entry-priority').value='normal'; node('#entry-status').value='planned'; node('#entry-target-version').value='v0.4.0';
+  api.openEditor({kind:'task',id:null}); node('#entry-title').value='CSV exportieren'; node('#entry-priority').value='normal'; node('#entry-status').value='planned'; node('#entry-target-version').value=String(releaseId);
   node('#add-criterion').dispatch('click');
   const input = node('#criterion-input'); input.dataset.criterionText='0'; input.value='CSV enthält alle Titel'; node('#entry-criteria').dispatch('input',{target:input});
   node('#add-criterion').dispatch('click'); input.dataset.criterionText='1'; input.value='CSV enthält den Status'; node('#entry-criteria').dispatch('input',{target:input});
@@ -213,7 +214,7 @@ test('delete confirmation cancels safely and deletes a feature only after confir
   const db = new PlannerDatabase(join(dir,'hq.sqlite'));
   db.saveProject(null,{title:'Software',kind:'software',description:'',priority:'normal'});
   const project = db.read().projects[0].id;
-  db.saveTask(null,{title:'CSV',priority:'normal',description:'',kind:'feature',featureId:null,targetVersion:null,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]});
+  db.saveTask(null,{title:'CSV',priority:'normal',description:'',kind:'feature',featureId:null,releaseId:null,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]});
   const feature = db.read().tasks[0];
   let deletions=0;
   const hq={read:()=>new Promise(()=>{}),deleteTask:async id=>{deletions++;db.deleteTask(id);return db.read();}};
@@ -234,7 +235,7 @@ test('feature details create and assign tasks and reflect their independent stat
   t.after(()=>rmSync(dir,{recursive:true,force:true})); const path=join(dir,'hq.sqlite'); let db=new PlannerDatabase(path);
   db.saveProject(null,{title:'Software',priority:'normal',description:'',kind:'software'});
   const project=db.read().projects[0].id;
-  const base={priority:'normal',description:'',featureId:null,targetVersion:null,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]};
+  const base={priority:'normal',description:'',featureId:null,releaseId:null,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]};
   db.saveTask(null,{...base,title:'Feature XY',kind:'feature'}); const feature=db.read().tasks.find(x=>x.kind==='feature').id;
   db.saveTask(null,{...base,title:'Vorhanden',kind:'task'}); const existing=db.read().tasks.find(x=>x.title==='Vorhanden').id;
   const hq={read:()=>new Promise(()=>{}),saveTask:async(id,fields)=>{db.saveTask(id,fields);return db.read();},assignFeature:async(id,fid)=>{db.assignFeature(id,fid);return db.read();},completeTask:async(id,done)=>{db.completeTask(id,done);return db.read();}};
@@ -267,7 +268,7 @@ test('task details change feature assignment and editor clears it when project c
   const dir=mkdtempSync(join(tmpdir(),'hq-reassign-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const db=new PlannerDatabase(join(dir,'hq.sqlite'));
   db.saveProject(null,{title:'A',kind:'software',priority:'normal',description:''}); db.saveProject(null,{title:'B',kind:'software',priority:'normal',description:''});
   const a=db.read().projects.find(p=>p.title==='A').id,b=db.read().projects.find(p=>p.title==='B').id;
-  const base={priority:'normal',description:'',featureId:null,targetVersion:null,criteria:[],projectId:a,dueDate:null,status:'planned',predecessorIds:[]};
+  const base={priority:'normal',description:'',featureId:null,releaseId:null,criteria:[],projectId:a,dueDate:null,status:'planned',predecessorIds:[]};
   db.saveTask(null,{...base,title:'F1',kind:'feature'}); db.saveTask(null,{...base,title:'F2',kind:'feature'});
   const f1=db.read().tasks.find(x=>x.title==='F1').id, f2=db.read().tasks.find(x=>x.title==='F2').id;
   db.saveTask(null,{...base,title:'Aufgabe',kind:'task',featureId:f1}); const id=db.read().tasks.find(x=>x.title==='Aufgabe').id;
@@ -287,14 +288,16 @@ test('fixes have their own tab and persist criteria, release and task assignment
   const { mkdtempSync,rmSync }=require('node:fs'); const { join }=require('node:path'); const { tmpdir }=require('node:os'); const {PlannerDatabase}=require('../dist/database');
   const dir=mkdtempSync(join(tmpdir(),'hq-fix-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const path=join(dir,'hq.sqlite'); let db=new PlannerDatabase(path);
   db.saveProject(null,{title:'Software',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
-  const base={priority:'normal',description:'',featureId:null,targetVersion:null,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]};
+  const base={priority:'normal',description:'',featureId:null,releaseId:null,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]};
+  db.createRelease(project,'v0.4.0'); db.createRelease(project,'v0.4.1');
+  const releaseId=db.read().releases.find(r=>r.version==='v0.4.0').id, nextReleaseId=db.read().releases.find(r=>r.version==='v0.4.1').id;
   db.saveTask(null,{...base,kind:'feature',title:'Feature'}); db.saveTask(null,{...base,kind:'task',title:'Vorhandene Aufgabe'});
   const hq={read:()=>new Promise(()=>{}),saveTask:async(id,fields)=>{db.saveTask(id,fields);return db.read();},assignFeature:async(id,fid)=>{db.assignFeature(id,fid);return db.read();},completeCriterion:async(id,value)=>{db.completeCriterion(id,value);return db.read();}};
   const {api,node,click,change}=renderer(hq); api.setWorkspace(db.read()); api.showView(project);
   assert.match(node('#content').innerHTML,/data-action="tab-fix"/); assert.match(node('#content').innerHTML,/Vorhandene Aufgabe/);
   click('tab-fix'); assert.match(node('#content').innerHTML,/Noch keine Fixes/); assert.doesNotMatch(node('#content').innerHTML,/Vorhandene Aufgabe/);
   click('new-task'); assert.equal(node('#editor-label').textContent,'Fix'); assert.equal(node('#feature-fields').hidden,false);
-  node('#entry-title').value='CSV reparieren'; node('#entry-description').value='Trennzeichen korrigieren'; node('#entry-priority').value='normal'; node('#entry-status').value='planned'; node('#entry-target-version').value='v0.4.0';
+  node('#entry-title').value='CSV reparieren'; node('#entry-description').value='Trennzeichen korrigieren'; node('#entry-priority').value='normal'; node('#entry-status').value='planned'; node('#entry-target-version').value=String(releaseId);
   node('#add-criterion').dispatch('click'); const input=node('#fix-criterion'); input.dataset.criterionText='0'; input.value='CSV lässt sich öffnen'; node('#entry-criteria').dispatch('input',{target:input});
   await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
   let fix=db.read().tasks.find(item=>item.kind==='fix'); assert.equal(fix.targetVersion,'v0.4.0'); assert.match(node('#content').innerHTML,/CSV reparieren/); assert.doesNotMatch(node('#content').innerHTML,/>Feature<\/span>/);
@@ -313,7 +316,7 @@ test('fixes have their own tab and persist criteria, release and task assignment
   click('tab-fix'); fix=db.read().tasks.find(item=>item.kind==='fix'); api.selectTask(fix.id);
   assert.match(node('#details').innerHTML,/v0\.4\.0/); assert.match(node('#details').innerHTML,/Vorhandene Aufgabe/); assert.equal(fix.criteria[0].completed,true);
   api.openEditor({kind:'task',id:fix.id}); assert.equal(node('#editor-title').textContent,'Fix bearbeiten'); assert.equal(node('#entry-description').value,'Trennzeichen korrigieren');
-  node('#entry-description').value='Trennzeichen und Quotes korrigieren'; node('#entry-target-version').value='v0.4.1';
+  node('#entry-description').value='Trennzeichen und Quotes korrigieren'; node('#entry-target-version').value=String(nextReleaseId);
   await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
   db.close(); db=new PlannerDatabase(path); api.setWorkspace(db.read());
   fix=db.read().tasks.find(item=>item.kind==='fix'); assert.equal(fix.description,'Trennzeichen und Quotes korrigieren'); assert.equal(fix.targetVersion,'v0.4.1');
@@ -322,5 +325,33 @@ test('fixes have their own tab and persist criteria, release and task assignment
     click(tab); const contents=node('#content').innerHTML; assert.match(contents,new RegExp(expected));
     for (const text of forbidden) assert.equal(contents.includes(text),false);
   }
+  db.close();
+});
+
+test('release tab plans and publishes parallel releases while preserving shipped fix details', async t => {
+  const { mkdtempSync,rmSync }=require('node:fs'); const { join }=require('node:path'); const { tmpdir }=require('node:os'); const {PlannerDatabase}=require('../dist/database');
+  const dir=mkdtempSync(join(tmpdir(),'hq-release-ui-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const path=join(dir,'hq.sqlite'); let db=new PlannerDatabase(path);
+  db.saveProject(null,{title:'Software',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
+  const hq={read:()=>new Promise(()=>{}),createRelease:async(id,v)=>{db.createRelease(id,v);return db.read();},publishRelease:async id=>{db.publishRelease(id);return db.read();},saveTask:async(id,fields)=>{db.saveTask(id,fields);return db.read();}};
+  const {api,node,click}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases');
+  assert.match(node('#content').innerHTML,/Noch keine Releases/);
+  click('new-release'); node('#release-version').value='v0.4.0'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
+  click('new-release'); node('#release-version').value='v0.5.0'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
+  const v04=db.read().releases.find(r=>r.version==='v0.4.0').id,v05=db.read().releases.find(r=>r.version==='v0.5.0').id;
+  click('tab-fix'); click('new-task'); node('#entry-title').value='Fix'; node('#entry-priority').value='normal'; node('#entry-status').value='planned'; node('#entry-target-version').value=String(v04); await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
+  click('tab-feature'); click('new-task'); node('#entry-title').value='Feature'; node('#entry-priority').value='normal'; node('#entry-status').value='planned'; node('#entry-target-version').value=String(v05); await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
+  click('tab-releases'); let html=node('#content').innerHTML; assert.match(html,/v0\.4\.0/); assert.match(html,/v0\.5\.0/); assert.match(html,/Fix · Fix/); assert.match(html,/Feature · Feature/);
+  click('publish-release',v04); assert.equal(node('#publish-dialog').open,true); await node('#confirm-publish').dispatchAsync('click');
+  html=node('#content').innerHTML; assert.match(html,/Veröffentlicht/); assert.match(html,/Fix · Fix/); assert.match(html,/v0\.5\.0/);
+  const fix=db.read().tasks.find(item=>item.title==='Fix'); api.selectTask(fix.id); assert.match(node('#details').innerHTML,/v0\.4\.0 \(veröffentlicht\)/);
+  api.openEditor({kind:'task',id:fix.id}); const options=node('#entry-target-version').children;
+  assert.equal(options.some(option=>option.text==='v0.4.0'),false); assert.equal(options.some(option=>option.text==='v0.5.0'),true);
+  assert.equal(node('#entry-target-version').value,'keep-published'); assert.match(node('#published-version').textContent,/v0\.4\.0/);
+  node('#entry-title').value='Fix bearbeitet'; node('#entry-priority').value='normal'; node('#entry-status').value='planned'; await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
+  assert.equal(db.read().tasks.find(item=>item.title==='Fix bearbeitet').releaseId,v04);
+  api.setTab('fix'); api.openEditor({kind:'task',id:null});
+  assert.equal(node('#entry-target-version').children.some(option=>option.text==='v0.4.0'),false); assert.equal(node('#entry-target-version').children.some(option=>option.text==='v0.5.0'),true);
+  db.close(); db=new PlannerDatabase(path); api.setWorkspace(db.read()); api.setTab('releases'); api.render();
+  html=node('#content').innerHTML; assert.match(html,/v0\.4\.0/); assert.match(html,/Veröffentlicht/); assert.match(html,/Fix · Fix bearbeitet/); assert.match(html,/Feature · Feature/);
   db.close();
 });

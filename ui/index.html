@@ -64,7 +64,7 @@
         <label class="field extra-field" id="project-kind-field"><span>Projekttyp</span><select id="entry-project-kind"><option value="normal">Normales Projekt</option><option value="software">Softwareprojekt</option></select></label>
         <label class="field extra-field"><span id="description-label">Beschreibung</span><textarea id="entry-description" rows="3" maxlength="10000"></textarea></label>
         <div id="feature-fields" hidden>
-          <label class="field extra-field"><span>Zielversion</span><input id="entry-target-version" type="text" maxlength="120" placeholder="z. B. v0.4.0"></label>
+          <label class="field extra-field"><span>Zielversion</span><select id="entry-target-version"></select></label><p id="published-version" class="release-note" hidden></p>
           <fieldset class="criteria-editor"><legend>Akzeptanzkriterien</legend><div id="entry-criteria"></div><button type="button" class="button compact" id="add-criterion" aria-label="Akzeptanzkriterium hinzufügen">+</button></fieldset>
         </div>
         <div id="task-fields">
@@ -97,6 +97,15 @@
         <button type="submit" class="button primary" id="save-entry">Speichern</button>
       </div>
     </form>
+  </dialog>
+  <dialog id="release-dialog" aria-labelledby="release-dialog-title">
+    <form id="release-form"><div class="dialog-head"><h2 id="release-dialog-title">Neues Release</h2><button type="button" class="button compact" id="close-release" aria-label="Schließen">×</button></div>
+    <fieldset><label class="field"><span>Versionsnummer</span><input id="release-version" type="text" maxlength="120" required placeholder="z. B. v0.4.0"></label></fieldset>
+    <p id="release-error" class="editor-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" class="button secondary" id="cancel-release">Abbrechen</button><button type="submit" class="button primary" aria-label="Release anlegen">+</button></div></form>
+  </dialog>
+  <dialog id="publish-dialog" aria-labelledby="publish-title" aria-describedby="publish-description">
+    <div class="dialog-head"><h2 id="publish-title">Release veröffentlichen?</h2></div><div class="delete-content"><p id="publish-description"></p><p id="publish-error" class="editor-error" role="alert" hidden></p></div>
+    <div class="dialog-actions"><button type="button" class="button secondary" id="cancel-publish" autofocus>Abbrechen</button><button type="button" class="button primary" id="confirm-publish">Veröffentlichen</button></div>
   </dialog>
   <dialog id="feature-task-dialog" aria-labelledby="feature-task-title">
     <div class="dialog-head"><h2 id="feature-task-title">Aufgabe zuordnen</h2><button type="button" class="button compact" id="close-feature-task" aria-label="Schließen">×</button></div>

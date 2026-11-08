@@ -30,3 +30,7 @@ In a software project's feature or fix details, use **Zugehörige Aufgaben** to 
 ## Upcoming sections
 
 The **Ideen** and **Recherche** navigation entries are placeholders for sections still in development.
+
+## Planning releases
+
+Software projects have a **Releases** tab for creating versions and marking them as published. Features and fixes can target an unpublished release in the same project. Publishing removes that version from new selections while retaining existing assignments and the release contents. Existing free-text target versions are migrated to planned releases when the database is upgraded.

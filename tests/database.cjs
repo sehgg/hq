@@ -6,7 +6,7 @@ const { join } = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { PlannerDatabase } = require('../dist/database.js');
 
-const fields = (title, extra = {}) => ({ title, priority: 'normal', description: '', kind: 'task', featureId: null, targetVersion: null, criteria: [], projectId: null, dueDate: null, status: 'planned', predecessorIds: [], ...extra });
+const fields = (title, extra = {}) => ({ title, priority: 'normal', description: '', kind: 'task', featureId: null, releaseId: null, criteria: [], projectId: null, dueDate: null, status: 'planned', predecessorIds: [], ...extra });
 function tempDatabase(t, legacy = false) {
   const dir = mkdtempSync(join(tmpdir(), 'hq-test-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -164,7 +164,9 @@ test('feature target version and individually edited criteria survive restart an
   let db = new PlannerDatabase(file);
   db.saveProject(null, {title:'App', priority:'normal', description:'', kind:'software'});
   const projectId = db.read().projects[0].id;
-  const feature = (overrides = {}) => fields('CSV exportieren', {kind:'feature', projectId, targetVersion:'v0.4.0', description:'CSV für Auswertungen', criteria:[{id:null,text:'CSV enthält Titel und Status',completed:false},{id:null,text:'CSV enthält Fälligkeitsdaten',completed:false}], ...overrides});
+  db.createRelease(projectId, 'v0.4.0'); db.createRelease(projectId, 'v0.5.0');
+  const v04=db.read().releases.find(r=>r.version==='v0.4.0').id, v05=db.read().releases.find(r=>r.version==='v0.5.0').id;
+  const feature = (overrides = {}) => fields('CSV exportieren', {kind:'feature', projectId, releaseId:v04, description:'CSV für Auswertungen', criteria:[{id:null,text:'CSV enthält Titel und Status',completed:false},{id:null,text:'CSV enthält Fälligkeitsdaten',completed:false}], ...overrides});
   db.saveTask(null, feature());
   let task = find(db,'CSV exportieren');
   assert.equal(task.targetVersion,'v0.4.0'); assert.equal(task.criteria.length,2);
@@ -174,7 +176,7 @@ test('feature target version and individually edited criteria survive restart an
   task = find(db,'CSV exportieren');
   assert.deepEqual(task.criteria.map(c => c.completed), [true,false]);
   assert.equal(task.targetVersion, 'v0.4.0');
-  db.saveTask(task.id, feature({targetVersion:'v0.5.0', criteria:[{id:second,text:'Fälligkeit und Projekt enthalten',completed:true},{id:null,text:'Datei lässt sich öffnen',completed:false}]}));
+  db.saveTask(task.id, feature({releaseId:v05, criteria:[{id:second,text:'Fälligkeit und Projekt enthalten',completed:true},{id:null,text:'Datei lässt sich öffnen',completed:false}]}));
   task = find(db,'CSV exportieren');
   assert.deepEqual(task.criteria.map(c => c.text), ['Fälligkeit und Projekt enthalten','Datei lässt sich öffnen']);
   assert.deepEqual(task.criteria.map(c => c.completed), [true,false]);
@@ -182,7 +184,7 @@ test('feature target version and individually edited criteria survive restart an
   assert.throws(() => db.completeCriterion(first,true), /nicht gefunden/);
   assert.throws(() => db.saveTask(task.id, feature({criteria:[{id:second,text:'',completed:false}]})), /Akzeptanzkriterium/);
   assert.equal(find(db,'CSV exportieren').targetVersion,'v0.5.0');
-  db.saveTask(task.id, feature({targetVersion:null, criteria:task.criteria}));
+  db.saveTask(task.id, feature({releaseId:null, criteria:task.criteria}));
   db.close(); db = new PlannerDatabase(file);
   task = find(db,'CSV exportieren'); assert.equal(task.targetVersion,null); assert.equal(task.criteria.length,2);
   db.close();
@@ -217,7 +219,8 @@ test('deleting tasks and features removes only their own data and dependency lin
   const project = db.read().projects[0].id;
   db.saveTask(null, fields('Vorgänger', {projectId:project}));
   const pre = find(db,'Vorgänger').id;
-  db.saveTask(null, fields('Feature', {projectId:project,kind:'feature',targetVersion:'v1',predecessorIds:[pre],criteria:[{id:null,text:'Ergebnis prüfen',completed:false}]}));
+  db.createRelease(project,'v1');
+  db.saveTask(null, fields('Feature', {projectId:project,kind:'feature',releaseId:db.read().releases[0].id,predecessorIds:[pre],criteria:[{id:null,text:'Ergebnis prüfen',completed:false}]}));
   const feature = find(db,'Feature').id;
   db.addSubtask(feature,'Feature-Teilaufgabe');
   db.saveTask(null, fields('Nachfolger', {projectId:project,predecessorIds:[feature]}));
@@ -299,7 +302,8 @@ test('fix migration preserves existing feature links, criteria and dependencies 
   let db=new PlannerDatabase(file); let w=db.read();
   assert.equal(w.projects[0].kind,'software'); assert.equal(w.tasks.find(x=>x.id===2).featureId,1);
   assert.equal(w.tasks.find(x=>x.id===1).criteria[0].completed,true); assert.deepEqual(w.tasks.find(x=>x.id===2).predecessorIds,[1]); assert.equal(w.subtasks[0].title,'Unteraufgabe');
-  db.saveTask(null,fields('Bugfix',{kind:'fix',projectId:1,targetVersion:'v2',criteria:[{id:null,text:'Fehler behoben',completed:true}]}));
+  db.createRelease(1,'v2');
+  db.saveTask(null,fields('Bugfix',{kind:'fix',projectId:1,releaseId:db.read().releases.find(r=>r.version==='v2').id,criteria:[{id:null,text:'Fehler behoben',completed:true}]}));
   const fix=find(db,'Bugfix').id; db.assignFeature(2,fix);
   assert.throws(()=>db.saveTask(null,fields('Ungültig',{kind:'fix'})),/Softwareprojekt/);
   db.close(); db=new PlannerDatabase(file); w=db.read();
@@ -315,7 +319,8 @@ test('a new process reloads fix details, checked criteria and linked task', t =>
   const db = new PlannerDatabase(file);
   db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''});
   const projectId=db.read().projects[0].id;
-  db.saveTask(null,fields('Fix',{kind:'fix',projectId,targetVersion:'v0.4.0',criteria:[{id:null,text:'Fehler ist behoben',completed:true}]}));
+  db.createRelease(projectId,'v0.4.0');
+  db.saveTask(null,fields('Fix',{kind:'fix',projectId,releaseId:db.read().releases[0].id,criteria:[{id:null,text:'Fehler ist behoben',completed:true}]}));
   const fix=find(db,'Fix').id;
   db.saveTask(null,fields('Fix testen',{projectId,featureId:fix}));
   db.close();
@@ -326,4 +331,37 @@ test('a new process reloads fix details, checked criteria and linked task', t =>
   assert.equal(restored.kind,'fix'); assert.equal(restored.targetVersion,'v0.4.0');
   assert.equal(restored.criteria[0].text,'Fehler ist behoben'); assert.equal(restored.criteria[0].completed,true);
   assert.equal(workspace.tasks.find(task=>task.title==='Fix testen').featureId,fix);
+});
+
+test('legacy target versions migrate to project-specific planned releases only once', t => {
+  const file=tempDatabase(t); let db=new PlannerDatabase(file);
+  for (const name of ['A','B']) db.saveProject(null,{title:name,kind:'software',priority:'normal',description:''});
+  const a=db.read().projects.find(x=>x.title==='A').id, b=db.read().projects.find(x=>x.title==='B').id;
+  db.saveTask(null,fields('Fix A',{kind:'fix',projectId:a})); db.saveTask(null,fields('Feature A',{kind:'feature',projectId:a})); db.saveTask(null,fields('Fix B',{kind:'fix',projectId:b})); db.close();
+  const old=new DatabaseSync(file); old.exec("ALTER TABLE tasks DROP COLUMN release_id; UPDATE tasks SET target_version='v0.4.0' WHERE title IN ('Fix A','Feature A','Fix B');"); old.close();
+  db=new PlannerDatabase(file); let w=db.read(); assert.equal(w.releases.length,2);
+  const ra=w.releases.find(x=>x.projectId===a), rb=w.releases.find(x=>x.projectId===b);
+  assert.equal(ra.version,'v0.4.0'); assert.equal(rb.version,'v0.4.0'); assert.equal(ra.published,false);
+  assert.equal(w.tasks.find(x=>x.title==='Fix A').releaseId,ra.id); assert.equal(w.tasks.find(x=>x.title==='Feature A').releaseId,ra.id); assert.equal(w.tasks.find(x=>x.title==='Fix B').releaseId,rb.id);
+  const fix=w.tasks.find(x=>x.title==='Fix A'); db.saveTask(fix.id,{...fix,releaseId:null}); db.publishRelease(ra.id); db.close();
+  db=new PlannerDatabase(file); w=db.read(); assert.equal(w.releases.length,2); assert.equal(w.tasks.find(x=>x.id===fix.id).releaseId,null); assert.equal(w.releases.find(x=>x.id===ra.id).published,true); db.close();
+});
+
+test('parallel releases enforce project and publication rules without losing shipped items', t => {
+  const file=tempDatabase(t); let db=new PlannerDatabase(file);
+  for(const name of ['App','Other']) db.saveProject(null,{title:name,kind:'software',priority:'normal',description:''});
+  const project=db.read().projects.find(x=>x.title==='App').id, other=db.read().projects.find(x=>x.title==='Other').id;
+  db.createRelease(project,'v0.4.0'); db.createRelease(project,'v0.5.0'); db.createRelease(other,'v0.4.0');
+  assert.throws(()=>db.createRelease(project,'v0.4.0'),/bereits vorhanden/);
+  let w=db.read(); const v04=w.releases.find(x=>x.projectId===project&&x.version==='v0.4.0').id, v05=w.releases.find(x=>x.projectId===project&&x.version==='v0.5.0').id, foreign=w.releases.find(x=>x.projectId===other).id;
+  db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:v04})); db.saveTask(null,fields('Feature',{kind:'feature',projectId:project,releaseId:v05}));
+  const fix=find(db,'Fix'); db.publishRelease(v04);
+  assert.throws(()=>db.saveTask(null,fields('Nachträglich',{kind:'fix',projectId:project,releaseId:v04})),/geplantes Release/);
+  assert.throws(()=>db.saveTask(null,fields('Anderes Projekt',{kind:'fix',projectId:project,releaseId:foreign})),/geplantes Release/);
+  assert.throws(()=>db.saveTask(null,fields('Aufgabe',{projectId:project,releaseId:v05})),/geplantes Release/);
+  db.saveTask(fix.id,{...fix,description:'Bearbeitet'});
+  db.close(); db=new PlannerDatabase(file); w=db.read();
+  assert.equal(w.releases.find(x=>x.id===v04).published,true); assert.equal(w.releases.find(x=>x.id===v05).published,false);
+  assert.equal(w.tasks.find(x=>x.id===fix.id).releaseId,v04); assert.equal(w.tasks.find(x=>x.id===fix.id).targetVersion,'v0.4.0');
+  assert.equal(w.tasks.find(x=>x.title==='Feature').releaseId,v05); db.close();
 });

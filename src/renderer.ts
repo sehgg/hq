@@ -14,6 +14,15 @@ interface Window {
   hq: HqApi;
 }
 
+const releaseDialog = document.querySelector<HTMLDialogElement>('#release-dialog')!;
+const releaseForm = document.querySelector<HTMLFormElement>('#release-form')!;
+const releaseVersion = document.querySelector<HTMLInputElement>('#release-version')!;
+const releaseError = document.querySelector<HTMLElement>('#release-error')!;
+const publishDialog = document.querySelector<HTMLDialogElement>('#publish-dialog')!;
+const publishDescription = document.querySelector<HTMLElement>('#publish-description')!;
+const publishError = document.querySelector<HTMLElement>('#publish-error')!;
+const confirmPublish = document.querySelector<HTMLButtonElement>('#confirm-publish')!;
+const publishedVersion = document.querySelector<HTMLElement>('#published-version')!;
 const featureTaskDialog = document.querySelector<HTMLDialogElement>('#feature-task-dialog')!;
 const existingFeatureTask = document.querySelector<HTMLSelectElement>('#existing-feature-task')!;
 const assignFeatureTask = document.querySelector<HTMLButtonElement>('#assign-feature-task')!;
@@ -26,7 +35,7 @@ const deleteError = document.querySelector<HTMLElement>('#delete-error')!;
 const confirmDelete = document.querySelector<HTMLButtonElement>('#confirm-delete')!;
 const cancelDelete = document.querySelector<HTMLButtonElement>('#cancel-delete')!;
 const details = document.querySelector<HTMLElement>('#details')!;
-const targetVersionField = document.querySelector<HTMLInputElement>('#entry-target-version')!;
+const targetVersionField = document.querySelector<HTMLSelectElement>('#entry-target-version')!;
 const criteriaField = document.querySelector<HTMLElement>('#entry-criteria')!;
 const descriptionField = document.querySelector<HTMLTextAreaElement>('#entry-description')!;
 const dueField = document.querySelector<HTMLInputElement>('#entry-due')!;
@@ -52,9 +61,11 @@ const editorError = document.querySelector<HTMLElement>('#editor-error')!;
 const saveButton = document.querySelector<HTMLButtonElement>('#save-entry')!;
 
 const priorityNames: Record<Priority, string> = { high: 'Hoch', normal: 'Normal', low: 'Niedrig' };
-let workspace: Workspace = { projects: [], tasks: [], subtasks: [] };
+let workspace: Workspace = { projects: [], tasks: [], subtasks: [], releases: [] };
 let view: View = 'inbox';
-let activeTab: TaskKind = 'task';
+let activeTab: TaskKind | 'releases' = 'task';
+let pendingReleaseId: number | null = null;
+let editorPublishedReleaseId: number | null = null;
 let editorTaskKind: TaskKind = 'task';
 let editing: EditorMode | null = null;
 let saving = false;
@@ -202,7 +213,7 @@ function orderTaskTree(tasks: Task[]): Array<{ task: Task; depth: number }> {
 
 function taskPanel(project: Project | undefined): string {
   const projectId = project?.id ?? null;
-  const kind: TaskKind = project?.kind === 'software' ? activeTab : 'task';
+  const kind: TaskKind = project?.kind === 'software' && activeTab !== 'releases' ? activeTab : 'task';
   const available = workspace.tasks.filter(task => task.kind === kind);
   const ownTasks = available.filter(task => task.projectId === projectId);
   const connected = new Set(ownTasks.map(task => task.id));
@@ -242,6 +253,57 @@ function taskPanel(project: Project | undefined): string {
           addButton('new-task', kind === 'feature' ? 'Feature anlegen' : kind === 'fix' ? 'Fix anlegen' : 'Aufgabe erfassen', 'secondary'))}
     </section>`;
 }
+
+
+function releasePanel(project: Project): string {
+  const releases = workspace.releases.filter(item => item.projectId === project.id);
+  return `<section class="panel" aria-labelledby="release-heading"><header class="panel-header"><h2 id="release-heading">Releases</h2><span class="panel-meta">${releases.length} ${releases.length === 1 ? 'Release' : 'Releases'}</span></header>
+    ${releases.length ? `<ul class="list">${releases.map(release => {
+      const items = workspace.tasks.filter(task => task.releaseId === release.id && task.kind !== 'task');
+      return `<li class="release-row"><div class="release-heading"><div><strong>${escapeHtml(release.version)}</strong> <span class="muted">${release.published ? 'Veröffentlicht' : 'Geplant'}</span></div>${release.published ? '' : `<button type="button" class="button compact" data-action="publish-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} veröffentlichen">Veröffentlichen</button>`}</div><ul class="detail-list">${items.length ? items.map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${item.kind === 'fix' ? 'Fix' : 'Feature'} · ${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') : '<li class="muted">Keine Features oder Fixes zugeordnet</li>'}</ul></li>`;
+    }).join('')}</ul>` : emptyState('Noch keine Releases', 'Plane eine Version für dieses Softwareprojekt.', addButton('new-release', 'Release anlegen', 'secondary'))}</section>`;
+}
+function updateReleaseOptions(show: boolean, selectedId: number | null): void {
+  const projectId = projectField.value ? Number(projectField.value) : null;
+  const selected = workspace.releases.find(item => item.id === selectedId && item.projectId === projectId);
+  const planned = workspace.releases.filter(item => item.projectId === projectId && !item.published);
+  editorPublishedReleaseId = show && selected?.published ? selected.id : null;
+  targetVersionField.replaceChildren(new Option('Keine Zielversion', ''), ...(editorPublishedReleaseId ? [new Option('Veröffentlichte Zuordnung beibehalten', 'keep-published')] : []), ...planned.map(item => new Option(item.version, String(item.id))));
+  targetVersionField.value = editorPublishedReleaseId ? 'keep-published' : selected && !selected.published ? String(selected.id) : '';
+  publishedVersion.hidden = !editorPublishedReleaseId;
+  publishedVersion.textContent = editorPublishedReleaseId ? `Aktuelles Release: ${selected!.version} (veröffentlicht)` : '';
+}
+function openReleaseDialog(): void {
+  if (typeof view !== 'number' || workspace.projects.find(project => project.id === view)?.kind !== 'software') return;
+  releaseVersion.value = ''; releaseError.hidden = true; releaseDialog.showModal(); releaseVersion.focus();
+}
+for (const id of ['close-release', 'cancel-release']) document.querySelector(`#${id}`)!.addEventListener('click', () => { if (!saving) releaseDialog.close(); });
+releaseDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+releaseForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (saving || typeof view !== 'number') return;
+  saving = true; releaseError.hidden = true;
+  try { workspace = await window.hq.createRelease(view, releaseVersion.value); releaseDialog.close(); render(); announce('Release angelegt.'); }
+  catch (error) { releaseError.textContent = errorMessage(error); releaseError.hidden = false; }
+  finally { saving = false; }
+});
+function openPublishDialog(id: number): void {
+  const release = workspace.releases.find(item => item.id === id && !item.published);
+  if (!release) return;
+  pendingReleaseId = id;
+  publishDescription.textContent = `„${release.version}“ wird als veröffentlicht markiert und steht nicht mehr für neue Zuordnungen zur Verfügung.`;
+  publishError.hidden = true; publishDialog.showModal();
+  document.querySelector<HTMLButtonElement>('#cancel-publish')!.focus();
+}
+document.querySelector('#cancel-publish')!.addEventListener('click', () => { if (!saving) publishDialog.close(); });
+publishDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+confirmPublish.addEventListener('click', async () => {
+  if (saving || pendingReleaseId === null) return;
+  saving = true; confirmPublish.disabled = true; publishError.hidden = true;
+  try { workspace = await window.hq.publishRelease(pendingReleaseId); publishDialog.close(); pendingReleaseId = null; render(); announce('Release veröffentlicht.'); }
+  catch (error) { publishError.textContent = errorMessage(error); publishError.hidden = false; }
+  finally { saving = false; confirmPublish.disabled = false; }
+});
 
 function projectRow(project: Project): string {
   const tasks = workspace.tasks.filter(task => task.projectId === project.id);
@@ -284,15 +346,15 @@ function render(): void {
     ? `<button type="button" class="button secondary" data-action="edit-project" data-id="${project.id}" aria-label="Projekt bearbeiten">B</button>`
     : '';
   const software = project?.kind === 'software';
-  const tabs = software ? `<nav class="task-tabs" aria-label="Projektbereich"><button type="button" class="task-tab" data-action="tab-task" aria-pressed="${activeTab === 'task'}">Aufgaben</button><button type="button" class="task-tab" data-action="tab-feature" aria-pressed="${activeTab === 'feature'}">Features</button><button type="button" class="task-tab" data-action="tab-fix" aria-pressed="${activeTab === 'fix'}">Fixes</button></nav>` : '';
+  const tabs = software ? `<nav class="task-tabs" aria-label="Projektbereich"><button type="button" class="task-tab" data-action="tab-task" aria-pressed="${activeTab === 'task'}">Aufgaben</button><button type="button" class="task-tab" data-action="tab-feature" aria-pressed="${activeTab === 'feature'}">Features</button><button type="button" class="task-tab" data-action="tab-fix" aria-pressed="${activeTab === 'fix'}">Fixes</button><button type="button" class="task-tab" data-action="tab-releases" aria-pressed="${activeTab === 'releases'}">Releases</button></nav>` : '';
   content.innerHTML = `
     ${pageHeading(project?.title ?? 'Posteingang',
       project ? `Projekte / ${project.title}` : 'Posteingang',
       project ? (project.description ? escapeHtml(project.description).replaceAll('\n', '<br>') : 'Deine Aufgaben für dieses Projekt.') : 'Ein Ort für alle Aufgaben ohne Projekt.',
-      editProject + addButton('new-task', software && activeTab === 'feature' ? 'Neues Feature' : software && activeTab === 'fix' ? 'Neuer Fix' : 'Neue Aufgabe'),
+      editProject + (software && activeTab === 'releases' ? addButton('new-release', 'Neues Release') : addButton('new-task', software && activeTab === 'feature' ? 'Neues Feature' : software && activeTab === 'fix' ? 'Neuer Fix' : 'Neue Aufgabe')),
       project ? `<div class="project-priority"><span>Projektpriorität</span>${priorityBadge(project.priority, 'Projektpriorität')}</div>` : '')}
     ${tabs}
-    ${taskPanel(project)}`;
+    ${software && activeTab === 'releases' ? releasePanel(project!) : taskPanel(project)}`;
 }
 
 
@@ -304,6 +366,7 @@ function renderDetails(): void {
   const links = (ids: number[]) => workspace.tasks.filter(item => ids.includes(item.id)).map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') || '<li class="muted">Keine</li>';
   const subtasks = workspace.subtasks.filter(item => item.taskId === task.id);
   const associated = workspace.tasks.filter(item => item.kind === 'task' && item.featureId === task.id);
+  const assignedRelease = workspace.releases.find(item => item.id === task.releaseId);
   const project = workspace.projects.find(item => item.id === task.projectId);
   const feature = workspace.tasks.find(item => item.id === task.featureId && item.kind !== 'task');
   const availableFeatures = workspace.tasks.filter(item => item.projectId === task.projectId && item.kind !== 'task');
@@ -312,7 +375,7 @@ function renderDetails(): void {
     : project?.kind === 'software' ? `<section><h3>${feature?.kind === 'fix' ? 'Zugehöriger Fix' : 'Zugehöriges Feature oder Fix'}</h3>${feature ? `<p><button type="button" class="detail-link" data-action="show-task" data-id="${feature.id}">${escapeHtml(feature.title)}</button></p>` : '<p class="muted">Kein Feature oder Fix zugeordnet</p>'}<label class="field extra-field"><span>Zuordnung ändern oder lösen</span><select data-feature-assignment="${task.id}"><option value="">Kein Feature oder Fix</option>${availableFeatures.map(item => `<option value="${item.id}"${item.id === task.featureId ? ' selected' : ''}>${item.kind === 'fix' ? 'Fix · ' : 'Feature · '}${escapeHtml(item.title)}</option>`).join('')}</select></label></section>` : '';
   details.innerHTML = `<header class="details-header"><div class="details-heading"><p class="eyebrow">${task.kind === 'feature' ? 'Feature' : task.kind === 'fix' ? 'Fix' : 'Aufgabe'}</p><h2>${escapeHtml(task.title)}</h2></div><div class="details-actions"><button type="button" class="button compact" data-action="edit-task" data-id="${task.id}" aria-label="${task.kind === 'feature' ? 'Feature' : task.kind === 'fix' ? 'Fix' : 'Aufgabe'} bearbeiten">B</button><button type="button" class="button compact" data-action="close-details" aria-label="Details schließen">×</button></div></header>
     <div class="details-body"><section><h3>Beschreibung</h3><p class="description">${task.description ? escapeHtml(task.description) : 'Keine Beschreibung'}</p></section>
-    ${task.kind !== 'task' ? `<section><h3>Zielversion</h3><p>${task.targetVersion ? escapeHtml(task.targetVersion) : 'Keine Zielversion'}</p></section><section><h3>Akzeptanzkriterien</h3><ul class="detail-list">${task.criteria.length ? task.criteria.map(criterion => `<li><label><input type="checkbox" data-criterion="${criterion.id}" ${criterion.completed ? 'checked' : ''}> ${escapeHtml(criterion.text)}</label></li>`).join('') : '<li class="muted">Keine Kriterien</li>'}</ul></section>` : ''}
+    ${task.kind !== 'task' ? `<section><h3>Zielversion</h3><p>${task.targetVersion ? escapeHtml(task.targetVersion) + (assignedRelease?.published ? ' (veröffentlicht)' : '') : 'Keine Zielversion'}</p></section><section><h3>Akzeptanzkriterien</h3><ul class="detail-list">${task.criteria.length ? task.criteria.map(criterion => `<li><label><input type="checkbox" data-criterion="${criterion.id}" ${criterion.completed ? 'checked' : ''}> ${escapeHtml(criterion.text)}</label></li>`).join('') : '<li class="muted">Keine Kriterien</li>'}</ul></section>` : ''}
     ${association}
     <section><h3>Status</h3><p>${statusNames[task.status]}</p></section><section><h3>Fällig am</h3><p>${task.dueDate ? escapeHtml(task.dueDate.split('-').reverse().join('.')) : 'Kein Datum'}</p></section>
     <section><h3>Unteraufgaben</h3><ul class="detail-list">${subtasks.map(item => `<li><label><input type="checkbox" data-subtask="${item.id}" ${item.completed ? 'checked' : ''}> ${escapeHtml(item.title)}</label></li>`).join('')}</ul>
@@ -392,13 +455,13 @@ function openEditor(mode: EditorMode): void {
   const entry = isTask ? task : workspace.projects.find(item => item.id === mode.id);
   const sourceFeature = mode.kind === 'task' && mode.featureId ? workspace.tasks.find(item => item.id === mode.featureId && item.kind !== 'task') : undefined;
   const currentProject = task ? task.projectId : sourceFeature ? sourceFeature.projectId : (typeof view === 'number' ? view : null);
-  editorTaskKind = task?.kind ?? (isTask && !sourceFeature ? activeTab : 'task');
+  editorTaskKind = task?.kind ?? (isTask && !sourceFeature && activeTab !== 'releases' ? activeTab : 'task');
   const isFeature = isTask && editorTaskKind !== 'task';
   const isFix = isTask && editorTaskKind === 'fix';
   document.querySelector<HTMLElement>('#project-kind-field')!.hidden = isTask;
   document.querySelector<HTMLElement>('#feature-fields')!.hidden = !isFeature;
   document.querySelector('#description-label')!.textContent = isFeature ? 'Beschreibung und Nutzen' : 'Beschreibung';
-  targetVersionField.value = isFeature ? task?.targetVersion ?? '' : '';
+
   draftCriteria = isFeature ? (task?.criteria ?? []).map(criterion => ({...criterion})) : [];
   renderCriteriaEditor();
   projectKindField.value = !isTask ? ((entry as Project | undefined)?.kind ?? 'normal') : 'normal';
@@ -423,6 +486,7 @@ function openEditor(mode: EditorMode): void {
   );
   projectField.value = currentProject === null ? '' : String(currentProject);
   updateEditorFeatures(isTask && !isFeature, task?.featureId ?? sourceFeature?.id ?? null);
+  updateReleaseOptions(isFeature, task?.releaseId ?? null);
   saveButton.textContent = entry ? 'Speichern' : '+';
   saveButton.setAttribute('aria-label', entry ? 'Speichern' : (isFix ? 'Fix anlegen' : isFeature ? 'Feature anlegen' : isTask ? 'Aufgabe anlegen' : 'Projekt anlegen'));
   saveButton.title = entry ? 'Speichern' : (isFix ? 'Fix anlegen' : isFeature ? 'Feature anlegen' : isTask ? 'Aufgabe anlegen' : 'Projekt anlegen');
@@ -442,7 +506,7 @@ function updateEditorFeatures(show: boolean, selected: number | null): void {
   taskFeatureField.replaceChildren(new Option('Kein Feature oder Fix', ''), ...features.map(item => new Option(`${item.kind === 'fix' ? 'Fix' : 'Feature'} · ${item.title}`, String(item.id))));
   taskFeatureField.value = features.some(item => item.id === selected) ? String(selected) : '';
 }
-projectField.addEventListener('change', () => updateEditorFeatures(editing?.kind === 'task' && editorTaskKind === 'task', null));
+projectField.addEventListener('change', () => { updateEditorFeatures(editing?.kind === 'task' && editorTaskKind === 'task', null); updateReleaseOptions(editing?.kind === 'task' && editorTaskKind !== 'task', null); });
 function openFeatureTaskDialog(): void {
   const feature = workspace.tasks.find(item => item.id === selectedTaskId && item.kind !== 'task');
   if (!feature) return;
@@ -552,6 +616,9 @@ document.addEventListener('click', event => {
   switch (target.dataset.action) {
     case 'tab-task': activeTab = 'task'; selectedTaskId = null; render(); break;
     case 'tab-feature': activeTab = 'feature'; selectedTaskId = null; render(); break;
+    case 'tab-releases': activeTab = 'releases'; selectedTaskId = null; render(); break;
+    case 'new-release': openReleaseDialog(); break;
+    case 'publish-release': openPublishDialog(Number(target.dataset.id)); break;
     case 'tab-fix': activeTab = 'fix'; selectedTaskId = null; render(); break;
     case 'add-feature-task': openFeatureTaskDialog(); break;
     case 'delete-task': openDeleteDialog(Number(target.dataset.id)); break;
@@ -663,7 +730,7 @@ form.addEventListener('submit', async event => {
       showView(newProject?.id ?? view);
       announce(mode.id === null ? 'Projekt angelegt.' : 'Projekt gespeichert.');
     } else {
-      workspace = await window.hq.saveTask(mode.id, { ...fields, kind: editorTaskKind, featureId: editorTaskKind === 'task' && taskFeatureField.value ? Number(taskFeatureField.value) : null, targetVersion: editorTaskKind !== 'task' ? targetVersionField.value.trim() || null : null, criteria: editorTaskKind !== 'task' ? draftCriteria : [], projectId, dueDate: dueField.value || null, status: statusField.value as TaskStatus, predecessorIds: [...selectedPredecessors] });
+      workspace = await window.hq.saveTask(mode.id, { ...fields, kind: editorTaskKind, featureId: editorTaskKind === 'task' && taskFeatureField.value ? Number(taskFeatureField.value) : null, releaseId: editorTaskKind === 'task' ? null : targetVersionField.value === 'keep-published' ? editorPublishedReleaseId : targetVersionField.value ? Number(targetVersionField.value) : null, criteria: editorTaskKind !== 'task' ? draftCriteria : [], projectId, dueDate: dueField.value || null, status: statusField.value as TaskStatus, predecessorIds: [...selectedPredecessors] });
       editing = null;
       editor.close();
       render();

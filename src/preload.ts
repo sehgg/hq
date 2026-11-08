@@ -3,6 +3,8 @@ import type { HqApi } from './shared';
 
 const api: HqApi = {
   read: () => ipcRenderer.invoke('workspace:read'),
+  createRelease: (projectId, version) => ipcRenderer.invoke('release:create', projectId, version),
+  publishRelease: id => ipcRenderer.invoke('release:publish', id),
   saveProject: (id, fields) => ipcRenderer.invoke('project:save', id, fields),
   saveTask: (id, fields) => ipcRenderer.invoke('task:save', id, fields),
   assignFeature: (taskId, featureId) => ipcRenderer.invoke('task:assign-feature', taskId, featureId),

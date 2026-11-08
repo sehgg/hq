@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { Priority, Project, ProjectFields, Task, TaskFields, TaskStatus, Subtask, Workspace } from './shared';
+import type { Priority, Project, ProjectFields, Task, TaskFields, TaskStatus, Subtask, Workspace, Release } from './shared';
 const byPriority = "CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END";
 function title(value: unknown): string { if (typeof value !== 'string' || !value.trim() || value.trim().length > 120) throw new Error('Der Name muss zwischen 1 und 120 Zeichen haben.'); return value.trim(); }
 function description(value: unknown): string { if (typeof value !== 'string' || value.length > 10000) throw new Error('Die Beschreibung ist ungültig.'); return value.trim(); }
@@ -45,6 +45,21 @@ export class PlannerDatabase {
     ALTER TABLE tasks_new RENAME TO tasks;`);
     for (const object of auxiliary) this.db.exec(object.sql);
    }
+   this.db.exec(`CREATE TABLE IF NOT EXISTS releases (
+    id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id),
+    version TEXT NOT NULL CHECK (length(trim(version)) BETWEEN 1 AND 120),
+    published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0,1)),
+    UNIQUE(project_id,version)
+   ) STRICT;`);
+   if (!tc.has('release_id')) {
+    this.db.exec(`ALTER TABLE tasks ADD COLUMN release_id INTEGER REFERENCES releases(id);
+     INSERT INTO releases (project_id, version)
+      SELECT DISTINCT t.project_id, trim(t.target_version) FROM tasks t JOIN projects p ON p.id=t.project_id
+      WHERE t.kind IN ('feature','fix') AND p.kind='software' AND t.target_version IS NOT NULL AND length(trim(t.target_version))>0
+      ON CONFLICT(project_id,version) DO NOTHING;
+     UPDATE tasks SET release_id=(SELECT r.id FROM releases r WHERE r.project_id=tasks.project_id AND r.version=trim(tasks.target_version))
+      WHERE kind IN ('feature','fix') AND target_version IS NOT NULL AND length(trim(target_version))>0;`);
+   }
    this.db.exec(`CREATE TABLE IF NOT EXISTS subtasks (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, title TEXT NOT NULL CHECK (length(trim(title)) BETWEEN 1 AND 120), completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0,1))) STRICT;
    CREATE TABLE IF NOT EXISTS acceptance_criteria (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, text TEXT NOT NULL CHECK (length(trim(text)) BETWEEN 1 AND 1000), completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0,1)), position INTEGER NOT NULL) STRICT;
    CREATE TABLE IF NOT EXISTS task_dependencies (predecessor_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, successor_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, PRIMARY KEY (predecessor_id, successor_id), CHECK (predecessor_id != successor_id)) STRICT;`);
@@ -55,19 +70,30 @@ export class PlannerDatabase {
  }
  read(): Workspace {
   const projects = this.db.prepare(`SELECT id, title, priority, description, kind FROM projects ORDER BY ${byPriority}, id DESC`).all() as unknown as Project[];
-  const rows = this.db.prepare(`SELECT id, title, priority, description, kind, feature_id AS featureId, target_version AS targetVersion, project_id AS projectId, due_date AS dueDate, status, completed FROM tasks ORDER BY due_date IS NULL, due_date ASC, ${byPriority}, id DESC`).all() as unknown as Array<Omit<Task,'completed'|'predecessorIds'|'successorIds'|'criteria'> & {completed:number}>;
+  const releases = this.db.prepare('SELECT id, project_id AS projectId, version, published FROM releases ORDER BY id DESC').all() as unknown as Array<Omit<Release,'published'> & {published:number}>;
+  const rows = this.db.prepare(`SELECT t.id, t.title, t.priority, t.description, t.kind, t.feature_id AS featureId, t.release_id AS releaseId, r.version AS targetVersion, t.project_id AS projectId, t.due_date AS dueDate, t.status, t.completed FROM tasks t LEFT JOIN releases r ON r.id=t.release_id ORDER BY t.due_date IS NULL, t.due_date ASC, CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, t.id DESC`).all() as unknown as Array<Omit<Task,'completed'|'predecessorIds'|'successorIds'|'criteria'> & {completed:number}>;
   const edges = this.db.prepare('SELECT predecessor_id AS predecessorId, successor_id AS successorId FROM task_dependencies').all() as unknown as {predecessorId:number; successorId:number}[];
   const criteria = this.db.prepare('SELECT id, task_id AS taskId, text, completed FROM acceptance_criteria ORDER BY position, id').all() as unknown as {id:number; taskId:number; text:string; completed:number}[];
   const subs = this.db.prepare('SELECT id, task_id AS taskId, title, completed FROM subtasks ORDER BY id').all() as unknown as Array<Omit<Subtask,'completed'> & {completed:number}>;
-  return { projects, tasks: rows.map(row => ({...row, completed: !!row.completed, criteria: criteria.filter(c => c.taskId === row.id).map(c => ({id:c.id, text:c.text, completed:!!c.completed})), predecessorIds: edges.filter(e => e.successorId === row.id).map(e => e.predecessorId), successorIds: edges.filter(e => e.predecessorId === row.id).map(e => e.successorId)})), subtasks: subs.map(s => ({...s, completed: !!s.completed})) };
+  return { releases: releases.map(r => ({...r, published: !!r.published})), projects, tasks: rows.map(row => ({...row, completed: !!row.completed, criteria: criteria.filter(c => c.taskId === row.id).map(c => ({id:c.id, text:c.text, completed:!!c.completed})), predecessorIds: edges.filter(e => e.successorId === row.id).map(e => e.predecessorId), successorIds: edges.filter(e => e.predecessorId === row.id).map(e => e.successorId)})), subtasks: subs.map(s => ({...s, completed: !!s.completed})) };
  }
  saveProject(id: number | null, fields: ProjectFields): void {
   if (fields.kind !== 'normal' && fields.kind !== 'software') throw new Error('Der Projekttyp ist ungültig.');
   const args = [title(fields.title), priority(fields.priority), description(fields.description), fields.kind] as const;
   if (id === null) { this.db.prepare('INSERT INTO projects (title, priority, description, kind) VALUES (?, ?, ?, ?)').run(...args); return; }
   identifier(id);
-  if (fields.kind === 'normal' && this.db.prepare("SELECT 1 FROM tasks WHERE project_id=? AND kind IN ('feature','fix')").get(id)) throw new Error('Verschiebe zuerst die Features und Fixes in ein anderes Softwareprojekt.');
+  if (fields.kind === 'normal' && (this.db.prepare("SELECT 1 FROM tasks WHERE project_id=? AND kind IN ('feature','fix')").get(id) || this.db.prepare('SELECT 1 FROM releases WHERE project_id=?').get(id))) throw new Error('Verschiebe zuerst die Features und Fixes in ein anderes Softwareprojekt.');
   if (!this.db.prepare('UPDATE projects SET title=?, priority=?, description=?, kind=? WHERE id=?').run(...args, id).changes) throw new Error('Das Projekt wurde nicht gefunden.');
+ }
+ createRelease(projectId: number, version: string): void {
+  identifier(projectId); const name = title(version);
+  if (!this.db.prepare("SELECT 1 FROM projects WHERE id=? AND kind='software'").get(projectId)) throw new Error('Releases benötigen ein Softwareprojekt.');
+  if (this.db.prepare('SELECT 1 FROM releases WHERE project_id=? AND version=?').get(projectId,name)) throw new Error('Diese Version ist in diesem Projekt bereits vorhanden.');
+  this.db.prepare('INSERT INTO releases (project_id,version) VALUES (?,?)').run(projectId,name);
+ }
+ publishRelease(id: number): void {
+  identifier(id);
+  if (!this.db.prepare('UPDATE releases SET published=1 WHERE id=? AND published=0').run(id).changes) throw new Error('Das Release wurde nicht gefunden oder ist bereits veröffentlicht.');
  }
  private ensureCanComplete(id: number): void {
   if (this.db.prepare('SELECT 1 FROM subtasks WHERE task_id=? AND completed=0').get(id)) throw new Error('Schließe zuerst alle Unteraufgaben ab.');
@@ -79,10 +105,14 @@ export class PlannerDatabase {
   const projectId=fields.projectId === null ? null : identifier(fields.projectId);
   if (fields.kind !== 'task' && fields.kind !== 'feature' && fields.kind !== 'fix') throw new Error('Der Aufgabentyp ist ungültig.');
   if (fields.kind !== 'task' && (projectId === null || !this.db.prepare("SELECT 1 FROM projects WHERE id=? AND kind='software'").get(projectId))) throw new Error('Features und Fixes benötigen ein Softwareprojekt.');
-  if (fields.targetVersion !== null && (typeof fields.targetVersion !== 'string' || fields.targetVersion.length > 120)) throw new Error('Die Zielversion ist ungültig.');
-  const version = fields.targetVersion?.trim() || null;
+  const releaseId = fields.releaseId === null ? null : identifier(fields.releaseId);
+  if (releaseId !== null) {
+   const release = this.db.prepare('SELECT project_id AS projectId, published FROM releases WHERE id=?').get(releaseId) as {projectId:number; published:number} | undefined;
+   const existing = id === null ? undefined : this.db.prepare('SELECT release_id AS releaseId FROM tasks WHERE id=?').get(identifier(id)) as {releaseId:number | null} | undefined;
+   if (fields.kind === 'task' || !release || release.projectId !== projectId || (release.published && existing?.releaseId !== releaseId)) throw new Error('Wähle ein geplantes Release desselben Softwareprojekts.');
+  }
   if (!Array.isArray(fields.criteria)) throw new Error('Die Akzeptanzkriterien sind ungültig.');
-  if (fields.kind === 'task' && (version !== null || fields.criteria.length)) throw new Error('Akzeptanzkriterien und Zielversion gehören zu einem Feature oder Fix.');
+  if (fields.kind === 'task' && (releaseId !== null || fields.criteria.length)) throw new Error('Akzeptanzkriterien und Zielversion gehören zu einem Feature oder Fix.');
   const criteria = fields.criteria.map(criterion => {
    if (!criterion || typeof criterion.text !== 'string' || !criterion.text.trim() || criterion.text.trim().length > 1000 || typeof criterion.completed !== 'boolean') throw new Error('Ein Akzeptanzkriterium muss zwischen 1 und 1000 Zeichen haben.');
    return { id: criterion.id === null ? null : identifier(criterion.id), text: criterion.text.trim(), completed: criterion.completed };
@@ -109,7 +139,7 @@ export class PlannerDatabase {
     this.db.prepare('INSERT INTO task_dependencies (predecessor_id,successor_id) VALUES (?,?)').run(predecessor,taskId);
    }
    if (state === 'done') this.ensureCanComplete(taskId);
-   this.db.prepare('UPDATE tasks SET title=?, priority=?, description=?, project_id=?, due_date=?, status=?, completed=?, kind=?, target_version=?, feature_id=? WHERE id=?').run(name,rank,desc,projectId,due,state,Number(state==='done'),fields.kind,version,featureId,taskId);
+   this.db.prepare('UPDATE tasks SET title=?, priority=?, description=?, project_id=?, due_date=?, status=?, completed=?, kind=?, target_version=NULL, feature_id=?, release_id=? WHERE id=?').run(name,rank,desc,projectId,due,state,Number(state==='done'),fields.kind,featureId,releaseId,taskId);
    this.db.prepare('DELETE FROM acceptance_criteria WHERE task_id=?').run(taskId);
    for (const [position, criterion] of criteria.entries()) if (criterion.id !== null) this.db.prepare('INSERT INTO acceptance_criteria (id,task_id,text,completed,position) VALUES (?,?,?,?,?)').run(criterion.id,taskId,criterion.text,Number(criterion.completed),position);
    for (const [position, criterion] of criteria.entries()) if (criterion.id === null) this.db.prepare('INSERT INTO acceptance_criteria (task_id,text,completed,position) VALUES (?,?,?,?)').run(taskId,criterion.text,Number(criterion.completed),position);
