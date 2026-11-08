@@ -413,3 +413,19 @@ test('deleting a release preserves linked features and fixes, clears their assig
   assert.equal(find(db,'Fix').releaseId,null); assert.equal(find(db,'Fix').criteria[0].completed,true); assert.equal(find(db,'Anderer Fix').releaseId,other);
   db.close();
 });
+
+test('release status can be changed both ways without changing assigned entries', t => {
+  const file=tempDatabase(t); let db=new PlannerDatabase(file);
+  db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
+  db.createRelease(project,'v1','2026-12-20'); const id=db.read().releases[0].id;
+  db.saveTask(null,fields('Fix',{kind:'fix',projectId:project,releaseId:id}));
+  db.renameRelease(id,'v1','2026-12-20',true);
+  assert.equal(db.read().releases[0].published,true);
+  assert.throws(()=>db.saveTask(null,fields('Neues Feature',{kind:'feature',projectId:project,releaseId:id})),/geplantes Release/);
+  db.renameRelease(id,'v1','2026-12-20',false);
+  db.saveTask(null,fields('Neues Feature',{kind:'feature',projectId:project,releaseId:id}));
+  assert.throws(()=>db.renameRelease(id,'v1',null,'invalid'),/Releasestatus/);
+  db.close(); db=new PlannerDatabase(file);
+  assert.equal(db.read().releases[0].published,false); assert.equal(db.read().tasks.filter(task=>task.releaseId===id).length,2);
+  db.close();
+});

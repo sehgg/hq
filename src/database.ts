@@ -93,12 +93,13 @@ export class PlannerDatabase {
   if (this.db.prepare('SELECT 1 FROM releases WHERE project_id=? AND version=?').get(projectId,name)) throw new Error('Diese Version ist in diesem Projekt bereits vorhanden.');
   this.db.prepare('INSERT INTO releases (project_id,version,due_date) VALUES (?,?,?)').run(projectId,name,date);
  }
- renameRelease(id: number, version: string, dueDate: string | null): void {
+ renameRelease(id: number, version: string, dueDate: string | null, published?: boolean): void {
   identifier(id); const name = title(version); const date = validDate(dueDate);
-  const release = this.db.prepare('SELECT project_id AS projectId FROM releases WHERE id=?').get(id) as {projectId: number} | undefined;
+  if (published !== undefined && typeof published !== 'boolean') throw new Error('Der Releasestatus ist ungültig.');
+  const release = this.db.prepare('SELECT project_id AS projectId, published FROM releases WHERE id=?').get(id) as {projectId: number; published: number} | undefined;
   if (!release) throw new Error('Das Release wurde nicht gefunden.');
   if (this.db.prepare('SELECT 1 FROM releases WHERE project_id=? AND version=? AND id<>?').get(release.projectId,name,id)) throw new Error('Diese Version ist in diesem Projekt bereits vorhanden.');
-  this.db.prepare('UPDATE releases SET version=?, due_date=? WHERE id=?').run(name,date,id);
+  this.db.prepare('UPDATE releases SET version=?, due_date=?, published=? WHERE id=?').run(name,date,published === undefined ? release.published : Number(published),id);
  }
  deleteRelease(id: number): void {
   identifier(id);

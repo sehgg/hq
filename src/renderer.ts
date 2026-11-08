@@ -21,6 +21,7 @@ const confirmDeleteRelease = document.querySelector<HTMLButtonElement>('#confirm
 const cancelDeleteRelease = document.querySelector<HTMLButtonElement>('#cancel-delete-release')!;
 const releaseDialog = document.querySelector<HTMLDialogElement>('#release-dialog')!;
 const releaseForm = document.querySelector<HTMLFormElement>('#release-form')!;
+const releaseStatus = document.querySelector<HTMLSelectElement>('#release-status')!;
 const releaseDue = document.querySelector<HTMLInputElement>('#release-due')!;
 const releaseVersion = document.querySelector<HTMLInputElement>('#release-version')!;
 const releaseTitle = document.querySelector<HTMLElement>('#release-dialog-title')!;
@@ -292,6 +293,8 @@ function openReleaseDialog(id: number | null = null): void {
   releaseTitle.textContent = release ? 'Release bearbeiten' : 'Neues Release';
   releaseVersion.value = release?.version ?? '';
   releaseDue.value = release?.dueDate ?? '';
+  document.querySelector<HTMLElement>('#release-status-field')!.hidden = !release;
+  releaseStatus.value = release?.published ? 'published' : 'planned';
   saveRelease.textContent = release ? 'Speichern' : 'Release anlegen';
   releaseError.hidden = true; releaseDialog.showModal(); releaseVersion.focus();
 }
@@ -302,7 +305,7 @@ releaseForm.addEventListener('submit', async event => {
   if (saving || typeof view !== 'number') return;
   const id = editingReleaseId;
   saving = true; saveRelease.disabled = true; releaseError.hidden = true;
-  try { workspace = id === null ? await window.hq.createRelease(view, releaseVersion.value, releaseDue.value || null) : await window.hq.renameRelease(id, releaseVersion.value, releaseDue.value || null); releaseDialog.close(); render(); announce(id === null ? 'Release angelegt.' : 'Release gespeichert.'); }
+  try { workspace = id === null ? await window.hq.createRelease(view, releaseVersion.value, releaseDue.value || null) : await window.hq.renameRelease(id, releaseVersion.value, releaseDue.value || null, releaseStatus.value === 'published'); releaseDialog.close(); render(); announce(id === null ? 'Release angelegt.' : 'Release gespeichert.'); }
   catch (error) { releaseError.textContent = errorMessage(error); releaseError.hidden = false; }
   finally { saving = false; saveRelease.disabled = false; }
 });
