@@ -96,53 +96,156 @@ function render(data:unknown):void {
  }
  console.log(JSON.stringify(data,null,2));
 }
-function run():void {
- if (command==='help' || v.help) { if (json) render({help}); else process.stdout.write(help); return; }
- if (args.positionals.length!==1) return fail('INVALID_ARGUMENT','Ungültiger Befehl.');
- const allowed=['projects','project','releases','release-create','tasks','show','create','edit','done','subtask-add','subtask-done','criterion-done'];
- if (!allowed.includes(command)) return fail('INVALID_ARGUMENT',`Unbekannter Befehl: ${command}`);
- const defaultPath=process.platform==='darwin' ? join(homedir(),'Library','Application Support','HQ','hq.sqlite') : process.platform==='win32' && process.env.APPDATA ? join(process.env.APPDATA,'HQ','hq.sqlite') : '';
- const file=str('db') ?? defaultPath;
- if (!file || !existsSync(file)) return fail('DATABASE_NOT_FOUND','HQ-Datenbank nicht gefunden. Nutze --db für einen anderen Pfad.',4);
- const db=new PlannerDatabase(file);
- try {
-  const w=db.read();
-  if (command==='projects') return render([...w.projects].sort((a,b)=>a.id-b.id));
-  if (command==='project') return render(projectFor(w,str('project')));
-  if (command==='releases') { const project=projectFor(w,str('project')); return render(w.releases.filter(r=>r.projectId===project.id).sort((a,b)=>a.id-b.id)); }
-  if (command==='tasks') {
-   if (v.all) {
-    if (str('project') || str('project-id') || v.inbox) return fail('INVALID_ARGUMENT','--all kann nicht mit einem Projekt oder --inbox kombiniert werden.');
-    const kind=str('kind'); if (kind && !['task','feature','fix'].includes(kind)) return fail('INVALID_ARGUMENT','Der Aufgabentyp ist ungültig.');
-    const term=str('title')?.toLocaleLowerCase('de');
-    const items=w.tasks.filter(t=>(!v.open || !t.completed) && (!kind || t.kind===kind) && (!term || t.title.toLocaleLowerCase('de').includes(term))).sort((a,b)=>a.id-b.id);
-    return render(items.map(t=>taskDetail(w,t)));
-   }
-   const project=projectFor(w,str('project')); const term=str('title')?.toLocaleLowerCase('de');
-   const items=w.tasks.filter(t=>t.projectId===project.id && (term ? t.title.toLocaleLowerCase('de').includes(term) : !t.completed && t.predecessorIds.every(id=>w.tasks.find(x=>x.id===id)?.completed) && w.subtasks.filter(x=>x.taskId===t.id).every(x=>x.completed))).sort((a,b)=>a.id-b.id);
-   if (!json && !term) console.log('Offene, umsetzbare Einträge – bitte anhand der ID auswählen:');
-   return render(items.map(t=>taskDetail(w,t)));
+function listTasks(workspace: Workspace): void {
+  const term = str('title')?.toLocaleLowerCase('de');
+  const matchesTitle = (task: Task) => !term || task.title.toLocaleLowerCase('de').includes(term);
+  if (v.all) {
+    if (str('project') || str('project-id') || v.inbox)
+      fail('INVALID_ARGUMENT', '--all kann nicht mit einem Projekt oder --inbox kombiniert werden.');
+    const kind = str('kind');
+    if (kind && !['task', 'feature', 'fix'].includes(kind))
+      fail('INVALID_ARGUMENT', 'Der Aufgabentyp ist ungültig.');
+    const tasks = workspace.tasks.filter(task =>
+      (!v.open || !task.completed) && (!kind || task.kind === kind) && matchesTitle(task));
+    renderTaskList(workspace, tasks);
+    return;
   }
-  if (command==='show') return render(taskDetail(w,findTask(w)));
-  const result=db.mutate(w.revision,()=>{
-   if (command==='create') {
-    if (v.inbox && (str('project') || str('project-id') || str('move-to'))) return fail('INVALID_ARGUMENT','--inbox kann nicht mit einem Projekt kombiniert werden.');
-    const projectId=v.inbox ? null : projectFor(w,str('project')).id; const name=str('title') ?? fail('INVALID_ARGUMENT','--title ist erforderlich.');
-    const base:TaskFields={title:name,description:'',priority:'normal',status:'planned',dueDate:null,kind:(str('kind') ?? 'task') as TaskFields['kind'],projectId,featureId:null,releaseId:null,criteria:[],predecessorIds:[]};
-    db.saveTask(null,fields(base)); const next=db.read(); const ids=new Set(w.tasks.map(t=>t.id)); return taskDetail(next,next.tasks.find(t=>!ids.has(t.id))!);
-   }
-   if (command==='release-create') {
-    const project=projectFor(w,str('project')); const version=str('version') ?? fail('INVALID_ARGUMENT','--version ist erforderlich.');
-    db.createRelease(project.id,version,str('due') ?? null); const next=db.read(); const ids=new Set(w.releases.map(r=>r.id)); return next.releases.find(r=>!ids.has(r.id))!;
-   }
-   if (command==='edit') { const old=findTask(w); db.saveTask(old.id,fields(old)); const next=db.read(); return taskDetail(next,next.tasks.find(t=>t.id===old.id)!); }
-   if (command==='done') { const old=findTask(w); db.completeTask(old.id,true); const next=db.read(); return taskDetail(next,next.tasks.find(t=>t.id===old.id)!); }
-   if (command==='subtask-add') { const parent=findTask(w); db.addSubtask(parent.id,str('text') ?? fail('INVALID_ARGUMENT','--text ist erforderlich.')); const next=db.read(); return taskDetail(next,next.tasks.find(t=>t.id===parent.id)!); }
-   if (command==='subtask-done') { const id=integer(str('subtask'),'--subtask'); if(!w.subtasks.some(s=>s.id===id)) return fail('NOT_FOUND','Unteraufgabe nicht gefunden.',4); db.completeSubtask(id,!v.undo); return db.read().subtasks.find(s=>s.id===id)!; }
-   const id=integer(str('criterion'),'--criterion'); if(!w.tasks.some(t=>t.criteria.some(c=>c.id===id))) return fail('NOT_FOUND','Akzeptanzkriterium nicht gefunden.',4); db.completeCriterion(id,!v.undo); return db.read().tasks.flatMap(t=>t.criteria).find(c=>c.id===id)!;
-  });
-  render(result);
- } finally { db.close(); }
+
+  const project = projectFor(workspace, str('project'));
+  const tasks = workspace.tasks.filter(task =>
+    task.projectId === project.id && (term ? matchesTitle(task) : isActionable(workspace, task)));
+  if (!json && !term)
+    console.log('Offene, umsetzbare Einträge – bitte anhand der ID auswählen:');
+  renderTaskList(workspace, tasks);
+}
+
+function isActionable(workspace: Workspace, task: Task): boolean {
+  return !task.completed
+    && task.predecessorIds.every(id => workspace.tasks.find(item => item.id === id)?.completed)
+    && workspace.subtasks.every(item => item.taskId !== task.id || item.completed);
+}
+
+function renderTaskList(workspace: Workspace, tasks: Task[]): void {
+  render(tasks.sort((a, b) => a.id - b.id).map(task => taskDetail(workspace, task)));
+}
+
+function createTask(db: PlannerDatabase, workspace: Workspace) {
+  if (v.inbox && (str('project') || str('project-id') || str('move-to')))
+    fail('INVALID_ARGUMENT', '--inbox kann nicht mit einem Projekt kombiniert werden.');
+  const projectId = v.inbox ? null : projectFor(workspace, str('project')).id;
+  const title = str('title') ?? fail('INVALID_ARGUMENT', '--title ist erforderlich.');
+  const base: TaskFields = {
+    title, projectId, description: '', priority: 'normal', status: 'planned', dueDate: null,
+    kind: (str('kind') ?? 'task') as TaskFields['kind'],
+    featureId: null, releaseId: null, criteria: [], predecessorIds: [],
+  };
+  db.saveTask(null, fields(base));
+  const next = db.read();
+  const ids = new Set(workspace.tasks.map(task => task.id));
+  return taskDetail(next, next.tasks.find(task => !ids.has(task.id))!);
+}
+
+function createRelease(db: PlannerDatabase, workspace: Workspace) {
+  const project = projectFor(workspace, str('project'));
+  const version = str('version') ?? fail('INVALID_ARGUMENT', '--version ist erforderlich.');
+  db.createRelease(project.id, version, str('due') ?? null);
+  const ids = new Set(workspace.releases.map(release => release.id));
+  return db.read().releases.find(release => !ids.has(release.id))!;
+}
+
+function readTaskDetail(db: PlannerDatabase, id: number) {
+  const workspace = db.read();
+  return taskDetail(workspace, workspace.tasks.find(task => task.id === id)!);
+}
+
+function editTask(db: PlannerDatabase, workspace: Workspace) {
+  const task = findTask(workspace);
+  db.saveTask(task.id, fields(task));
+  return readTaskDetail(db, task.id);
+}
+
+function completeTask(db: PlannerDatabase, workspace: Workspace) {
+  const task = findTask(workspace);
+  db.completeTask(task.id, true);
+  return readTaskDetail(db, task.id);
+}
+
+function addSubtask(db: PlannerDatabase, workspace: Workspace) {
+  const parent = findTask(workspace);
+  db.addSubtask(parent.id, str('text') ?? fail('INVALID_ARGUMENT', '--text ist erforderlich.'));
+  return readTaskDetail(db, parent.id);
+}
+
+function completeSubtask(db: PlannerDatabase, workspace: Workspace) {
+  const id = integer(str('subtask'), '--subtask');
+  if (!workspace.subtasks.some(subtask => subtask.id === id))
+    fail('NOT_FOUND', 'Unteraufgabe nicht gefunden.', 4);
+  db.completeSubtask(id, !v.undo);
+  return db.read().subtasks.find(subtask => subtask.id === id)!;
+}
+
+function completeCriterion(db: PlannerDatabase, workspace: Workspace) {
+  const id = integer(str('criterion'), '--criterion');
+  if (!workspace.tasks.some(task => task.criteria.some(criterion => criterion.id === id)))
+    fail('NOT_FOUND', 'Akzeptanzkriterium nicht gefunden.', 4);
+  db.completeCriterion(id, !v.undo);
+  return db.read().tasks.flatMap(task => task.criteria).find(criterion => criterion.id === id)!;
+}
+
+const readCommands = new Map<string, (workspace: Workspace) => void>([
+  ['projects', workspace => render([...workspace.projects].sort((a, b) => a.id - b.id))],
+  ['project', workspace => render(projectFor(workspace, str('project')))],
+  ['releases', workspace => {
+    const project = projectFor(workspace, str('project'));
+    render(workspace.releases.filter(release => release.projectId === project.id).sort((a, b) => a.id - b.id));
+  }],
+  ['tasks', listTasks],
+  ['show', workspace => render(taskDetail(workspace, findTask(workspace)))],
+]);
+
+const writeCommands = new Map<string, (db: PlannerDatabase, workspace: Workspace) => unknown>([
+  ['create', createTask],
+  ['release-create', createRelease],
+  ['edit', editTask],
+  ['done', completeTask],
+  ['subtask-add', addSubtask],
+  ['subtask-done', completeSubtask],
+  ['criterion-done', completeCriterion],
+]);
+
+function databasePath(): string {
+  const defaultPath = process.platform === 'darwin'
+    ? join(homedir(), 'Library', 'Application Support', 'HQ', 'hq.sqlite')
+    : process.platform === 'win32' && process.env.APPDATA
+      ? join(process.env.APPDATA, 'HQ', 'hq.sqlite')
+      : '';
+  const file = str('db') ?? defaultPath;
+  if (!file || !existsSync(file))
+    fail('DATABASE_NOT_FOUND', 'HQ-Datenbank nicht gefunden. Nutze --db für einen anderen Pfad.', 4);
+  return file;
+}
+
+function run(): void {
+  if (command === 'help' || v.help) {
+    if (json) render({help});
+    else process.stdout.write(help);
+    return;
+  }
+  if (args.positionals.length !== 1)
+    fail('INVALID_ARGUMENT', 'Ungültiger Befehl.');
+  const read = readCommands.get(command);
+  const write = writeCommands.get(command);
+  if (!read && !write)
+    fail('INVALID_ARGUMENT', `Unbekannter Befehl: ${command}`);
+
+  const db = new PlannerDatabase(databasePath());
+  try {
+    const workspace = db.read();
+    if (read) read(workspace);
+    else if (write) render(db.mutate(workspace.revision, () => write(db, workspace)));
+  } finally {
+    db.close();
+  }
 }
 try { run(); } catch (error) {
  const message=error instanceof Error ? error.message : 'Unbekannter Fehler.';
