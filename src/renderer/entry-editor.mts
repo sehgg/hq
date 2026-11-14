@@ -1,3 +1,10 @@
+import type { BaseFields, CriterionFields, Priority, Project, ProjectKind, SubtaskFields, Task, TaskKind, TaskStatus } from '../shared.js';
+import type { DialogContext, View } from './dialog-context.mjs';
+import { createNoteEditor } from './note-editor.mjs';
+import { errorMessage, escapeHtml } from './view-format.mjs';
+
+type EditorMode = { kind: 'project' | 'task'; id: number | null };
+
 const entryEditorLabels = {
     project: { label: 'Projekt', edit: 'Projekt bearbeiten', create: 'Neues Projekt', add: 'Projekt anlegen', placeholder: 'Wie heißt dein Vorhaben?' },
     task: { label: 'Aufgabe', edit: 'Aufgabe bearbeiten', create: 'Neue Aufgabe', add: 'Aufgabe anlegen', placeholder: 'Was steht an?' },
@@ -5,11 +12,12 @@ const entryEditorLabels = {
     fix: { label: 'Fix', edit: 'Fix bearbeiten', create: 'Neuer Fix', add: 'Fix anlegen', placeholder: 'Was soll behoben oder geändert werden?' },
 };
 
-function createEntryEditor(context: DialogContext & {
+export function createEntryEditor(context: DialogContext & {
     readonly activeTab: TaskKind | 'releases' | 'history';
     selectedTaskId: number | null;
     showView(target: View): void;
 }) {
+    const publishedVersion = document.querySelector<HTMLElement>('#published-version')!;
     const notes = createNoteEditor('#entry-notes', '#add-entry-note');
 
     const deleteDialog = document.querySelector<HTMLDialogElement>('#delete-dialog')!;
@@ -299,7 +307,7 @@ function createEntryEditor(context: DialogContext & {
         else
             editing = null;
     });
-    function readFormFields(mode: EditorMode): import('../shared').BaseFields | undefined {
+    function readFormFields(mode: EditorMode): BaseFields | undefined {
         const title = titleField.value.trim();
         if (!title) {
             editorError.textContent = 'Gib einen Namen ein.';
@@ -322,7 +330,7 @@ function createEntryEditor(context: DialogContext & {
         editor.close();
     }
 
-    async function saveProject(id: number | null, fields: import('../shared').BaseFields): Promise<void> {
+    async function saveProject(id: number | null, fields: BaseFields): Promise<void> {
         const previousIds = new Set(context.workspace.projects.map(project => project.id));
         context.workspace = await window.hq.saveProject(id, {
             ...fields,
@@ -335,7 +343,7 @@ function createEntryEditor(context: DialogContext & {
         context.announce(id === null ? 'Projekt angelegt.' : 'Projekt gespeichert.');
     }
 
-    async function saveTask(id: number | null, fields: import('../shared').BaseFields): Promise<void> {
+    async function saveTask(id: number | null, fields: BaseFields): Promise<void> {
         const kind = editorTaskKind;
         const projectId = projectField.value ? Number(projectField.value) : null;
         const releaseValue = targetVersionField.value;

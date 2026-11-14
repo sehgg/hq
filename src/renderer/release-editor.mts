@@ -1,4 +1,9 @@
-function createReleaseEditor(context: DialogContext & { selectedReleaseId: number | null }) {
+import type { ReleaseStatus } from '../shared.js';
+import type { DialogContext } from './dialog-context.mjs';
+import { createNoteEditor } from './note-editor.mjs';
+import { errorMessage, statusNames } from './view-format.mjs';
+
+export function createReleaseEditor(context: DialogContext & { selectedReleaseId: number | null }) {
     const notes = createNoteEditor('#release-notes', '#add-release-note');
 
     const deleteReleaseDialog = document.querySelector<HTMLDialogElement>('#delete-release-dialog')!;

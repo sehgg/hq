@@ -1,28 +1,9 @@
-type HistoryKind = import('../shared').HistoryKind;
-type Priority = import('../shared').Priority;
-type Project = import('../shared').Project;
-type Task = import('../shared').Task;
-type Workspace = import('../shared').Workspace;
-type CriterionFields = import('../shared').CriterionFields;
-type SubtaskFields = import('../shared').SubtaskFields;
-type NoteFields = import('../shared').NoteFields;
-type TaskKind = import('../shared').TaskKind;
-type ProjectKind = import('../shared').ProjectKind;
-type ReleaseStatus = import('../shared').ReleaseStatus;
-type TaskStatus = import('../shared').TaskStatus;
-type HqApi = import('../shared').HqApi;
-type View = 'inbox' | 'projects' | 'ideas' | 'research' | number;
-type EditorMode = {
-    kind: 'project';
-    id: number | null;
-} | {
-    kind: 'task';
-    id: number | null;
-};
-interface Window {
-    hq: HqApi;
-}
-const publishedVersion = document.querySelector<HTMLElement>('#published-version')!;
+import type { HistoryKind, Priority, Project, Release, ReleaseStatus, Task, TaskKind, Workspace } from '../shared.js';
+import type { View } from './dialog-context.mjs';
+import { createEntryEditor } from './entry-editor.mjs';
+import { createReleaseEditor } from './release-editor.mjs';
+import { errorMessage, escapeHtml, statusNames } from './view-format.mjs';
+
 const details = document.querySelector<HTMLElement>('#details')!;
 const sidebarNav = document.querySelector<HTMLElement>('#navigation')!;
 const main = document.querySelector<HTMLElement>('#main')!;
@@ -161,16 +142,7 @@ let saving = false;
 let selectedTaskId: number | null = null;
 let selectedReleaseId: number | null = null;
 const releaseStatusNames: Record<ReleaseStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', published: 'Veröffentlicht' };
-const statusNames: Record<TaskStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', done: 'Erledigt' };
-function errorMessage(error: unknown): string {
-    const message = error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' ? error.message : '';
-    return message ? message.replace(/^Error invoking remote method '[^']+': Error: /, '') : 'Der Vorgang konnte nicht gespeichert werden.';
-}
 let noticeTimer: number | undefined;
-function escapeHtml(value: string): string {
-    return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-}
 function addButton(action: string, label: string, style = 'primary'): string {
     return `<button type="button" class="button ${style}" data-action="${action}" aria-label="${label}" title="${label}">+</button>`;
 }
@@ -319,7 +291,7 @@ function renderDetails(): void {
     details.innerHTML = release ? renderReleaseDetails(release) : task ? renderTaskDetails(task) : '';
 }
 
-function renderReleaseDetails(release: import('../shared').Release): string {
+function renderReleaseDetails(release: Release): string {
     const items = workspace.tasks.filter(item => item.releaseId === release.id);
     const list = (kind: TaskKind) => {
         const matching = items.filter(item => item.kind === kind);
@@ -366,15 +338,6 @@ function announce(message: string, error = false): void {
         notice.hidden = true;
     }, 4500);
 }
-interface DialogContext {
-    workspace: Workspace;
-    readonly view: View;
-    saving: boolean;
-    render(): void;
-    announce(message: string, error?: boolean): void;
-    focusHeading(): void;
-}
-
 const dialogContext = {
     get workspace() { return workspace; },
     set workspace(value: Workspace) { workspace = value; },

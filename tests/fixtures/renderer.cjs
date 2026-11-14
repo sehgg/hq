@@ -1,7 +1,9 @@
-// Run the scripts in the same order as the desktop HTML, using DOM doubles.
+// Load the same browser modules as the desktop HTML, using DOM doubles.
 const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
-function renderer(hq = { read: () => new Promise(() => { }) }) {
+const { fileURLToPath, pathToFileURL } = require('node:url');
+const { resolve } = require('node:path');
+async function renderer(hq = { read: () => new Promise(() => { }) }) {
     class Element {
         constructor() {
             this.value = '';
@@ -122,10 +124,30 @@ function renderer(hq = { read: () => new Promise(() => { }) }) {
     };
     vm.createContext(context);
     const html = readFileSync('ui/index.html', 'utf8');
-    const scripts = [...html.matchAll(/<script defer src="\.\.\/(dist\/[^"]+)"><\/script>/g)];
-    for (const [, script] of scripts)
-        vm.runInContext(readFileSync(script, 'utf8'), context);
-    vm.runInContext(`\nglobalThis.testApi = { taskRow, taskPanel, openEditor: entryEditor.open, openDeleteDialog: entryEditor.openDelete, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, setWorkspace: value => { workspace = { releases: [], ...value }; }, getWorkspace: () => workspace };`, context);
+    const [, source] = html.match(/<script type="module" src="([^"]+)"><\/script>/);
+    const entry = new URL(source, pathToFileURL(resolve('ui/index.html'))).href;
+    const modules = new Map();
+    function loadModule(identifier) {
+        if (!modules.has(identifier)) {
+            const code = readFileSync(fileURLToPath(identifier), 'utf8');
+            const testHooks = identifier === entry ? `
+                globalThis.testApi = {
+                    taskRow, taskPanel, render, showView,
+                    openEditor: entryEditor.open,
+                    openDeleteDialog: entryEditor.openDelete,
+                    setTab: value => { activeTab = value; },
+                    selectTask: id => { selectedTaskId = id; renderDetails(); },
+                    setWorkspace: value => { workspace = { releases: [], ...value }; },
+                    getWorkspace: () => workspace,
+                };
+            ` : '';
+            modules.set(identifier, new vm.SourceTextModule(code + testHooks, { context, identifier }));
+        }
+        return modules.get(identifier);
+    }
+    const entryModule = loadModule(entry);
+    await entryModule.link((specifier, parent) => loadModule(new URL(specifier, parent.identifier).href));
+    await entryModule.evaluate();
     const change = async (target) => {
         for (const handler of handlers.change ?? [])
             await handler({ target });

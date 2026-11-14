@@ -5,8 +5,8 @@ const { renderer } = require('./fixtures/renderer.cjs');
 
 const task = (id, title, projectId, overrides = {}) => ({ id, title, projectId, priority:'normal', description:'', kind:'task', featureId:null, releaseId:null, targetVersion:null, criteria:[], dueDate:null, status:'planned', completed:false, predecessorIds:[], successorIds:[], ...overrides });
 
-test('task details show populated sections in the requested order', () => {
-  const {api,node} = renderer();
+test('task details show populated sections in the requested order', async () => {
+  const {api,node} = await renderer();
   api.setWorkspace({projects:[{id:1,kind:'software'}], tasks:[task(1,'Fix',1,{kind:'fix',criteria:[{id:1,text:'Prüfen',completed:false}]})], subtasks:[], history:[]});
   api.selectTask(1);
   const html = node('#details').innerHTML;
@@ -21,7 +21,7 @@ test('task details show populated sections in the requested order', () => {
 
 test('background reads refresh external changes but do not interrupt a text draft or replace a newer state', async () => {
   let current={revision:1,projects:[],tasks:[],subtasks:[],releases:[]};
-  const {api,node,tick,document}=renderer({read:async()=>current});
+  const {api,node,tick,document}=await renderer({read:async()=>current});
   await new Promise(resolve=>setImmediate(resolve));
   current={...current,revision:2,tasks:[task(1,'Extern',null)]}; tick(); await new Promise(resolve=>setImmediate(resolve));
   assert.equal(api.getWorkspace().revision,2); assert.match(node('#content').innerHTML,/Extern/);
@@ -31,8 +31,8 @@ test('background reads refresh external changes but do not interrupt a text draf
   current={...current,revision:2}; tick(); await new Promise(resolve=>setImmediate(resolve)); assert.equal(api.getWorkspace().revision,3);
 });
 
-test('sidebar resize tracks pointer movement, respects the current minimum and supports keyboard input', () => {
-  const {node} = renderer(); const handle=node('#sidebar-resize'), shell=node('.shell'), sidebar=node('#sidebar');
+test('sidebar resize tracks pointer movement, respects the current minimum and supports keyboard input', async () => {
+  const {node} = await renderer(); const handle=node('#sidebar-resize'), shell=node('.shell'), sidebar=node('#sidebar');
   const pointer = (clientX, pointerId=1) => ({button:0, clientX, pointerId, preventDefault(){}});
   handle.dispatch('pointerdown', pointer(226)); assert.equal(handle.capturedPointer,1);
   handle.dispatch('pointermove', pointer(326)); assert.equal(shell.style.properties['--sidebar-width'],'326px');
@@ -44,8 +44,8 @@ test('sidebar resize tracks pointer movement, respects the current minimum and s
   assert.equal(handle.attributes['aria-valuemin'],'190');
 });
 
-test('details divider resizes in the opposite direction and follows the details panel', () => {
-  const {api,node} = renderer(); const handle=node('#details-resize'), shell=node('.shell'), details=node('#details'), sidebar=node('#sidebar');
+test('details divider resizes in the opposite direction and follows the details panel', async () => {
+  const {api,node} = await renderer(); const handle=node('#details-resize'), shell=node('.shell'), details=node('#details'), sidebar=node('#sidebar');
   shell.width=1160; shell.style.properties['--details-min']='320px'; sidebar.width=226; details.width=320;
   api.setWorkspace({projects:[],tasks:[task(1,'Eintrag',null)],subtasks:[]}); api.selectTask(1); assert.equal(handle.hidden,false);
   const pointer=(clientX,pointerId=1)=>({button:0,clientX,pointerId,preventDefault(){}});
@@ -58,8 +58,8 @@ test('details divider resizes in the opposite direction and follows the details 
   assert.equal(handle.attributes['aria-valuemin'],'320'); api.selectTask(null); assert.equal(handle.hidden,true);
 });
 
-test('task rows expose statuses without dependency markers', () => {
-  const { api } = renderer();
+test('task rows expose statuses without dependency markers', async () => {
+  const { api } = await renderer();
   for (const [status, label] of [['planned','Geplant'], ['in_progress','In Arbeit'], ['paused','Pausiert'], ['done','Erledigt']]) {
     const row = api.taskRow(task(2, 'Nachfolger', 2, {status, predecessorIds:[1]}));
     assert.match(row, new RegExp(`task-status">${label}<`));
@@ -68,8 +68,8 @@ test('task rows expose statuses without dependency markers', () => {
   }
 });
 
-test('predecessor selection offers other projects and inbox, excludes current and selected tasks, and retains selection', () => {
-  const { api, node } = renderer();
+test('predecessor selection offers other projects and inbox, excludes current and selected tasks, and retains selection', async () => {
+  const { api, node } = await renderer();
   api.setWorkspace({ projects:[{id:1,title:'Projekt A'}, {id:2,title:'Projekt B'}], tasks:[task(1,'Selbst',1), task(2,'Aus B',2), task(3,'Loser Vorgänger',null), task(4,'Schon gewählt',2)], subtasks:[] });
   api.openEditor({kind:'task', id:1});
   node('#add-predecessor').dispatch('click');
@@ -90,8 +90,8 @@ test('predecessor selection offers other projects and inbox, excludes current an
   assert.deepEqual(node('#predecessor-task').children.map(option => option.text), ['Aufgabe auswählen','Schon gewählt']);
 });
 
-test('project and inbox lists show only their own entries in workspace order', () => {
-  const { api } = renderer();
+test('project and inbox lists show only their own entries in workspace order', async () => {
+  const { api } = await renderer();
   const tasks = [task(2,'B',2,{predecessorIds:[1]}), task(1,'A',1), task(3,'C',null,{predecessorIds:[2]})];
   api.setWorkspace({projects:[{id:1,title:'A'},{id:2,title:'B'}], tasks, subtasks:[]});
   for (const [project,id] of [[{id:1},1], [{id:2},2], [undefined,3]]) {
@@ -102,8 +102,8 @@ test('project and inbox lists show only their own entries in workspace order', (
   }
 });
 
-test('software projects separate tasks and features and normal projects have one overview', () => {
-  const { api, node, click } = renderer();
+test('software projects separate tasks and features and normal projects have one overview', async () => {
+  const { api, node, click } = await renderer();
   const software = {id:1,title:'Software',kind:'software'};
   const normal = {id:2,title:'Normal',kind:'normal'};
   api.setWorkspace({projects:[software,normal],tasks:[task(1,'Aufgabe',1), task(2,'Feature',1,{kind:'feature',description:'Funktion'}), task(3,'Normal-Aufgabe',2)],subtasks:[]});
@@ -141,7 +141,7 @@ test('project deadline editor lists conflicts and saves once their dates are cor
     db.saveTask(null, {title:`Später ${kind}`, kind, projectId:project, priority:'normal', description:'', dueDate:'2026-12-15', status:'planned', predecessorIds:[], criteria:[], featureId:null, releaseId:null});
   }
   const hq = {read:() => new Promise(() => {}), saveProject:async (id, fields) => {db.saveProject(id, fields); return db.read();}};
-  const {api, node} = renderer(hq);
+  const {api, node} = await renderer(hq);
   api.setWorkspace(db.read()); api.showView(project); api.openEditor({kind:'project', id:project});
   node('#entry-project-due').value = '2026-11-30'; node('#entry-project-due').dispatch('input');
   const conflicts = node('#project-due-conflicts');
@@ -171,7 +171,7 @@ test('editor creates a software project, a task and a feature and reloads edited
   const path = join(dir,'hq.sqlite');
   let db = new PlannerDatabase(path);
   const hq = {read:() => new Promise(() => {}), saveProject: async (id,fields) => {db.saveProject(id,fields); return db.read();}, saveTask: async (id,fields) => {db.saveTask(id,fields); return db.read();}};
-  const { api, node } = renderer(hq);
+  const { api, node } = await renderer(hq);
   api.setWorkspace(db.read());
   const submit = () => node('#editor-form').dispatchAsync('submit', {preventDefault() {}});
   api.openEditor({kind:'project',id:null});
@@ -209,7 +209,7 @@ test('feature editor and detail checklist save criteria and target version throu
   db.saveProject(null,{title:'Software',kind:'software',description:'',priority:'normal'});
   db.createRelease(db.read().projects[0].id,'v0.4.0'); const releaseId=db.read().releases[0].id;
   const hq = {read:() => new Promise(() => {}), saveTask:async (id,fields) => {db.saveTask(id,fields); return db.read();}, completeCriterion:async (id,checked) => {db.completeCriterion(id,checked); return db.read();}};
-  const {api,node,change} = renderer(hq); api.setWorkspace(db.read()); api.showView(db.read().projects[0].id); api.setTab('feature');
+  const {api,node,change} = await renderer(hq); api.setWorkspace(db.read()); api.showView(db.read().projects[0].id); api.setTab('feature');
   api.openEditor({kind:'task',id:null}); node('#entry-title').value='CSV exportieren'; node('#entry-priority').value='normal'; node('#entry-status').value='planned'; node('#entry-target-version').value=String(releaseId);
   node('#add-criterion').dispatch('click');
   const input = node('#criterion-input'); input.dataset.criterionText='0'; input.value='CSV enthält alle Titel'; node('#entry-criteria').dispatch('input',{target:input});
@@ -245,7 +245,7 @@ test('delete confirmation cancels safely and deletes a feature only after confir
   const feature = db.read().tasks[0];
   let deletions=0;
   const hq={read:()=>new Promise(()=>{}),deleteTask:async id=>{deletions++;db.deleteTask(id);return db.read();}};
-  const {api,node} = renderer(hq); api.setWorkspace(db.read()); api.showView(project); api.setTab('feature'); api.selectTask(feature.id);
+  const {api,node} = await renderer(hq); api.setWorkspace(db.read()); api.showView(project); api.setTab('feature'); api.selectTask(feature.id);
   assert.doesNotMatch(node('#details').innerHTML,/Feature löschen/);
   api.openEditor({kind:'task',id:feature.id}); assert.equal(node('#delete-entry').hidden,false);
   node('#delete-entry').dispatch('click');
@@ -260,7 +260,7 @@ test('delete confirmation cancels safely and deletes a feature only after confir
 test('delete from a row editor targets that entry even with another selection', async () => {
   const tasks = [task(1,'Selected',null), task(2,'Edited',null)];
   let deleted;
-  const {api,node,click} = renderer({read:()=>new Promise(()=>{}), deleteTask:async id => {
+  const {api,node,click} = await renderer({read:()=>new Promise(()=>{}), deleteTask:async id => {
     deleted=id;
     return {revision:1,projects:[],tasks:tasks.filter(item=>item.id!==id),subtasks:[],releases:[]};
   }});
@@ -283,7 +283,7 @@ test('fixes have their own tab and persist criteria, release and task assignment
   const releaseId=db.read().releases.find(r=>r.version==='v0.4.0').id, nextReleaseId=db.read().releases.find(r=>r.version==='v0.4.1').id;
   db.saveTask(null,{...base,kind:'feature',title:'Feature'}); db.saveTask(null,{...base,kind:'task',title:'Vorhandene Aufgabe'});
   const hq={read:()=>new Promise(()=>{}),saveTask:async(id,fields)=>{db.saveTask(id,fields);return db.read();},completeCriterion:async(id,value)=>{db.completeCriterion(id,value);return db.read();}};
-  const {api,node,click,change}=renderer(hq); api.setWorkspace(db.read()); api.showView(project);
+  const {api,node,click,change}=await renderer(hq); api.setWorkspace(db.read()); api.showView(project);
   assert.match(node('#content').innerHTML,/data-action="tab-fix"/); assert.match(node('#content').innerHTML,/Vorhandene Aufgabe/);
   click('tab-fix'); assert.match(node('#content').innerHTML,/Noch keine Fixes/); assert.doesNotMatch(node('#content').innerHTML,/Vorhandene Aufgabe/);
   click('new-task'); assert.equal(node('#editor-label').textContent,'Fix'); assert.equal(node('#feature-fields').hidden,false);
@@ -316,7 +316,7 @@ test('release tab plans and publishes parallel releases while preserving shipped
   const dir=mkdtempSync(join(tmpdir(),'hq-release-ui-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const path=join(dir,'hq.sqlite'); let db=new PlannerDatabase(path);
   db.saveProject(null,{title:'Software',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
   const hq={read:()=>new Promise(()=>{}),createRelease:async(id,v)=>{db.createRelease(id,v);return db.read();},publishRelease:async id=>{db.publishRelease(id);return db.read();},saveTask:async(id,fields)=>{db.saveTask(id,fields);return db.read();}};
-  const {api,node,click}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases');
+  const {api,node,click}=await renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases');
   assert.match(node('#content').innerHTML,/Noch keine Releases/);
   click('new-release'); node('#release-version').value='v0.4.0'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
   click('new-release'); node('#release-version').value='v0.5.0'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
@@ -344,7 +344,7 @@ test('release dialogs clearly create and edit versions with due dates', async t 
   const dir=mkdtempSync(join(tmpdir(),'hq-release-edit-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const db=new PlannerDatabase(join(dir,'hq.sqlite'));
   db.saveProject(null,{title:'App',priority:'normal',description:'',kind:'software'}); const project=db.read().projects[0].id;
   const hq={read:()=>new Promise(()=>{}),createRelease:async(id,version,due)=>{db.createRelease(id,version,due);return db.read();},renameRelease:async(id,version,due,published)=>{db.renameRelease(id,version,due,published);return db.read();}};
-  const {api,node,click}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases'); click('new-release');
+  const {api,node,click}=await renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases'); click('new-release');
   assert.equal(node('#release-dialog').open,true); assert.equal(node('#release-dialog-title').textContent,'Neues Release'); assert.equal(node('#save-release').textContent,'Release anlegen');
   node('#release-version').value='v1'; node('#release-due').value='2026-12-20'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
   const release=db.read().releases[0]; assert.equal(release.dueDate,'2026-12-20');
@@ -364,7 +364,7 @@ test('release details open from the overview and deletion requires confirmation'
   db.saveTask(null,{...base,title:'Feature A',kind:'feature'}); db.saveTask(null,{...base,title:'Fix B',kind:'fix'});
   let deletes=0;
   const hq={read:()=>new Promise(()=>{}),deleteRelease:async id=>{deletes++;db.deleteRelease(id);return db.read();},renameRelease:async(id,version,due,published)=>{db.renameRelease(id,version,due,published);return db.read();}};
-  const {api,node,click}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases');
+  const {api,node,click}=await renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases');
   assert.match(node('#content').innerHTML,/data-action="show-release"/);
   click('show-release',release); assert.equal(node('#details').hidden,false);
   assert.match(node('#details').innerHTML,/<h2>v1<\/h2>/); assert.match(node('#details').innerHTML,/20\.12\.2026/);
@@ -389,7 +389,7 @@ test('release status selection updates details and planned release choices', asy
   db.createRelease(project,'v1'); const id=db.read().releases[0].id;
   db.saveTask(null,{title:'Fix',kind:'fix',priority:'normal',description:'',featureId:null,releaseId:id,criteria:[],projectId:project,dueDate:null,status:'done',predecessorIds:[]});
   const hq={read:()=>new Promise(()=>{}),renameRelease:async(id,version,due,published)=>{db.renameRelease(id,version,due,published);return db.read();}};
-  const {api,node,click}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases'); click('show-release',id); click('edit-release',id);
+  const {api,node,click}=await renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases'); click('show-release',id); click('edit-release',id);
   assert.equal(node('#release-status-field').hidden,false); assert.equal(node('#release-status').value,'planned');
   node('#release-status').value='published'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
   assert.equal(db.read().releases[0].published,true); assert.match(node('#details').innerHTML,/Veröffentlicht/);
@@ -407,7 +407,7 @@ test('a task can be assigned in the editor and blocks its release until complete
   db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:''}); const project=db.read().projects[0].id;
   db.createRelease(project,'v1'); const release=db.read().releases[0].id;
   const hq={read:()=>new Promise(()=>{}),saveTask:async(id,fields)=>{db.saveTask(id,fields);return db.read();},publishRelease:async id=>{db.publishRelease(id);return db.read();},renameRelease:async(id,v,d,status)=>{db.renameRelease(id,v,d,status);return db.read();}};
-  const {api,node,click}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-task'); click('new-task');
+  const {api,node,click}=await renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-task'); click('new-task');
   assert.equal(node('#release-assignment-field').hidden,false);
   assert.ok(node('#entry-target-version').children.some(option=>option.value===String(release)));
   node('#entry-title').value='Dokumentation'; node('#entry-priority').value='normal'; node('#entry-status').value='planned'; node('#entry-target-version').value=String(release);
@@ -434,7 +434,7 @@ test('release status edits show all states and prevent publication while feature
   db.createRelease(project,'v1'); const id=db.read().releases[0].id;
   db.saveTask(null,{title:'Feature',kind:'feature',priority:'normal',description:'',featureId:null,releaseId:id,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]});
   const hq={read:()=>new Promise(()=>{}),renameRelease:async(id,v,d,status)=>{db.renameRelease(id,v,d,status);return db.read();},publishRelease:async id=>{db.publishRelease(id);return db.read();}};
-  const {api,node,click}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases'); click('show-release',id);
+  const {api,node,click}=await renderer(hq); api.setWorkspace(db.read()); api.showView(project); click('tab-releases'); click('show-release',id);
   for (const [value,label] of [['in_progress','In Arbeit'],['paused','Pausiert']]) {
     click('edit-release',id); node('#release-status').value=value; await node('#release-form').dispatchAsync('submit',{preventDefault(){}});
     assert.equal(db.read().releases[0].status,value); assert.match(node('#details').innerHTML,new RegExp(label));
@@ -450,8 +450,8 @@ test('release status edits show all states and prevent publication while feature
   db.close();
 });
 
-test('overview visibility toggles completed entries and groups release entries by type', () => {
-  const {api,node,click}=renderer();
+test('overview visibility toggles completed entries and groups release entries by type', async () => {
+  const {api,node,click}=await renderer();
   const project={id:1,title:'Projekt',kind:'software',priority:'normal',description:'',dueDate:null};
   const releases=[{id:1,projectId:1,version:'v1',status:'planned',published:false,dueDate:null},{id:2,projectId:1,version:'v2',status:'published',published:true,dueDate:null}];
   api.setWorkspace({projects:[project],releases,tasks:[task(1,'Offen',1,{releaseId:1}),task(2,'Fertig',1,{completed:true,status:'done',releaseId:1}),task(3,'Funktion',1,{kind:'feature',releaseId:1}),task(4,'Fehler',1,{kind:'fix',releaseId:1}),task(5,'Inbox fertig',null,{completed:true,status:'done'})],subtasks:[]});
@@ -471,8 +471,8 @@ test('overview visibility toggles completed entries and groups release entries b
   click('show-release',1); assert.match(node('#details').innerHTML,/Fertig/);
 });
 
-test('history appears on every project and in task and release details with scoped notes', () => {
- const {api,node,click}=renderer();
+test('history appears on every project and in task and release details with scoped notes', async () => {
+ const {api,node,click}=await renderer();
  const project={id:1,title:'Projekt',kind:'normal',priority:'normal',description:'',dueDate:null};
  const history=[
   {id:1,entityKind:'project',entityId:1,projectId:1,entityTitle:'Projekt',date:'2026-11-14T10:00:00Z',field:'Titel',oldValue:'Alt',newValue:'Neu',manual:false},
@@ -484,8 +484,8 @@ test('history appears on every project and in task and release details with scop
  api.selectTask(2); assert.match(node('#details').innerHTML,/<h3>Verlauf<\/h3>/); assert.match(node('#details').innerHTML,/Privat/); assert.doesNotMatch(node('#details').innerHTML,/data-history-kind/);
 });
 
-test('manual notes are editable in their entity editor with project-only deletion', () => {
- const {api,node}=renderer();
+test('manual notes are editable in their entity editor with project-only deletion', async () => {
+ const {api,node}=await renderer();
  const history=[{id:1,entityKind:'task',entityId:2,manual:true,newValue:'Aufgabennotiz'}, {id:2,entityKind:'project',entityId:1,manual:true,newValue:'Projektnotiz'}];
  api.setWorkspace({projects:[{id:1,title:'Projekt',kind:'normal',priority:'normal',description:'',dueDate:null}],tasks:[task(2,'Aufgabe',1)],subtasks:[],history});
  api.openEditor({kind:'task',id:2});
@@ -498,7 +498,7 @@ test('manual notes are editable in their entity editor with project-only deletio
 
 test('editor sends new and edited notes with the saved entry', async () => {
  let sent;
- const {api,node} = renderer({read:()=>new Promise(()=>{}), saveTask:async (...args) => { sent=args; return {revision:8,projects:[],tasks:[],subtasks:[],releases:[],history:[]}; }});
+ const {api,node} = await renderer({read:()=>new Promise(()=>{}), saveTask:async (...args) => { sent=args; return {revision:8,projects:[],tasks:[],subtasks:[],releases:[],history:[]}; }});
  api.setWorkspace({revision:7,projects:[],tasks:[task(2,'Aufgabe',null)],subtasks:[],history:[{id:1,entityKind:'task',entityId:2,manual:true,newValue:'Alt'}]});
  api.openEditor({kind:'task',id:2});
  const field = node('#note-input'); field.dataset.noteText='0'; field.value='Neu';
@@ -525,7 +525,7 @@ test('entry and release editors save independent note drafts with their own IDs'
     ],
   };
   const saved = [];
-  const {api, click, node} = renderer({
+  const {api, click, node} = await renderer({
     read: () => new Promise(() => {}),
     saveTask: async (id, fields, revision, notes) => {
       saved.push({id, notes});

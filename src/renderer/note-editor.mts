@@ -1,4 +1,7 @@
-function createNoteEditor(container: string, button: string) {
+import type { HistoryKind, NoteFields, Workspace } from '../shared.js';
+import { escapeHtml } from './view-format.mjs';
+
+export function createNoteEditor(container: string, button: string) {
     let draftNotes: NoteFields[] = [];
     let draftNoteKind: HistoryKind = 'task';
     const noteContainer = document.querySelector<HTMLElement>(container)!;

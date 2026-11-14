@@ -7,8 +7,8 @@ HQ is an Electron desktop application and a local CLI built from the same TypeSc
 | Location | Responsibility |
 | --- | --- |
 | `ui/index.html`, `ui/styles.css` | Desktop markup, dialogs, layout, and styles. |
-| `src/renderer/renderer.ts` | Renders the workspace and coordinates navigation, selection, refresh, and the editors. |
-| `src/renderer/entry-editor.ts`, `src/renderer/release-editor.ts`, `src/renderer/note-editor.ts` | Set up dialog events and keep each editor’s draft local. Both editors use the same note editor factory. |
+| `src/renderer/renderer.mts` | Renders the workspace and coordinates navigation, selection, refresh, and the editors. |
+| `src/renderer/entry-editor.mts`, `src/renderer/release-editor.mts`, `src/renderer/note-editor.mts` | Set up dialog events and keep each editor’s draft local. Both editors use the same note editor factory. |
 | `src/preload.ts`, `src/shared.ts` | Exposes the typed `window.hq` bridge through Electron's context bridge; shared types define workspaces and fields. |
 | `src/main.ts` | Creates the Electron window, opens the user database, and implements IPC handlers. |
 | `src/database/index.ts`, `src/database/database.ts` | Public entry point and implementation of `PlannerDatabase`: SQLite queries, transactions, and shared validation and completion rules. |
@@ -17,7 +17,7 @@ HQ is an Electron desktop application and a local CLI built from the same TypeSc
 | `scripts/` | Packages the desktop application and builds the CLI single executable. |
 | `tests/` | Database, CLI, and renderer tests, including concurrent writers. |
 
-TypeScript is compiled into `dist/`. The HTML loads the compiled renderer scripts in order, with the note editor and dialog controllers before the renderer entry point. The app runs the compiled main and preload scripts. The CLI packaging script bundles the compiled CLI and its database modules with a Node runtime.
+TypeScript is compiled into `dist/`. The HTML loads a single renderer ES module. The renderer imports its dialog controllers, and the controllers import the shared note editor and view formatting functions. TypeScript emits the renderer as `.mjs` files and the Electron main process and CLI as CommonJS. The app runs the compiled main and preload scripts. The CLI packaging script bundles the compiled CLI and its database modules with a Node runtime.
 
 ## Example: saving a task
 
