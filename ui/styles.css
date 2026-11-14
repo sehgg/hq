@@ -410,8 +410,6 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
 .delete-content { padding: 16px; }
 .delete-content p { overflow-wrap: anywhere; }
 .delete-content .editor-error { margin: 0; }
-.association-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.association-header h3 { margin: 0; }
 .release-row { padding: 10px 12px; }
 .release-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; overflow-wrap: anywhere; }
 .release-note { color: var(--muted); font-size: 12px; margin: 5px 0 0; overflow-wrap: anywhere; }

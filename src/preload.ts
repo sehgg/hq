@@ -3,7 +3,6 @@ import type { HqApi } from './shared';
 
 const api: HqApi = {
   read: () => ipcRenderer.invoke('workspace:read'),
-  addHistoryNote: (kind, id, text, revision) => ipcRenderer.invoke('history:add-note', kind, id, text, revision),
   createRelease: (projectId, version, dueDate, revision, notes) => ipcRenderer.invoke('release:create', projectId, version, dueDate, revision, notes),
   renameRelease: (id, version, dueDate, status, revision, notes) => ipcRenderer.invoke('release:rename', id, version, dueDate, status, revision, notes),
   deleteRelease: (id, revision) => ipcRenderer.invoke('release:delete', id, revision),
@@ -12,7 +11,6 @@ const api: HqApi = {
   saveTask: (id, fields, revision, notes) => ipcRenderer.invoke('task:save', id, fields, revision, notes),
   deleteTask: (id, revision) => ipcRenderer.invoke('task:delete', id, revision),
   completeTask: (id, completed, revision) => ipcRenderer.invoke('task:complete', id, completed, revision),
-  addSubtask: (id, title, revision) => ipcRenderer.invoke('subtask:add', id, title, revision),
   completeSubtask: (id, completed, revision) => ipcRenderer.invoke('subtask:complete', id, completed, revision),
   completeCriterion: (id, completed, revision) => ipcRenderer.invoke('criterion:complete', id, completed, revision),
 };
