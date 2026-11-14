@@ -1,3 +1,10 @@
+const entryEditorLabels = {
+    project: { label: 'Projekt', edit: 'Projekt bearbeiten', create: 'Neues Projekt', add: 'Projekt anlegen', placeholder: 'Wie heißt dein Vorhaben?' },
+    task: { label: 'Aufgabe', edit: 'Aufgabe bearbeiten', create: 'Neue Aufgabe', add: 'Aufgabe anlegen', placeholder: 'Was steht an?' },
+    feature: { label: 'Feature', edit: 'Feature bearbeiten', create: 'Neues Feature', add: 'Feature anlegen', placeholder: 'Welche Funktion soll hinzukommen?' },
+    fix: { label: 'Fix', edit: 'Fix bearbeiten', create: 'Neuer Fix', add: 'Fix anlegen', placeholder: 'Was soll behoben oder geändert werden?' },
+};
+
 function createEntryEditor(context: DialogContext & {
     readonly activeTab: TaskKind | 'releases' | 'history';
     selectedTaskId: number | null;
@@ -119,7 +126,7 @@ function createEntryEditor(context: DialogContext & {
         const currentProject = task ? task.projectId : (typeof context.view === 'number' ? context.view : null);
         editorTaskKind = task?.kind ?? (isTask && context.activeTab !== 'releases' && context.activeTab !== 'history' ? context.activeTab : 'task');
         const isFeature = isTask && editorTaskKind !== 'task';
-        const isFix = isTask && editorTaskKind === 'fix';
+        const labels = entryEditorLabels[isTask ? editorTaskKind : 'project'];
         document.querySelector<HTMLElement>('#project-kind-field')!.hidden = isTask;
         document.querySelector<HTMLElement>('#project-due-field')!.hidden = isTask;
         projectDueField.value = !isTask ? ((entry as Project | undefined)?.dueDate ?? '') : '';
@@ -131,13 +138,11 @@ function createEntryEditor(context: DialogContext & {
         draftSubtasks = task ? context.workspace.subtasks.filter(subtask => subtask.taskId === task.id).map(({ id, title }) => ({ id, title })) : [];
         renderSubtaskEditor();
         projectKindField.value = !isTask ? ((entry as Project | undefined)?.kind ?? 'normal') : 'normal';
-        document.querySelector('#editor-label')!.textContent = isFix ? 'Fix' : isFeature ? 'Feature' : isTask ? 'Aufgabe' : 'Projekt';
-        document.querySelector('#editor-title')!.textContent = isTask
-            ? (isFix ? (entry ? 'Fix bearbeiten' : 'Neuer Fix') : isFeature ? (entry ? 'Feature bearbeiten' : 'Neues Feature') : (entry ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'))
-            : (entry ? 'Projekt bearbeiten' : 'Neues Projekt');
+        document.querySelector('#editor-label')!.textContent = labels.label;
+        document.querySelector('#editor-title')!.textContent = entry ? labels.edit : labels.create;
         document.querySelector<HTMLElement>('#project-field')!.hidden = !isTask;
         titleField.value = entry?.title ?? '';
-        titleField.placeholder = isFix ? 'Was soll behoben oder geändert werden?' : isFeature ? 'Welche Funktion soll hinzukommen?' : isTask ? 'Was steht an?' : 'Wie heißt dein Vorhaben?';
+        titleField.placeholder = labels.placeholder;
         priorityField.value = entry?.priority ?? 'normal';
         descriptionField.value = entry?.description ?? '';
         document.querySelector<HTMLElement>('#task-fields')!.hidden = !isTask;
@@ -149,8 +154,9 @@ function createEntryEditor(context: DialogContext & {
         projectField.value = currentProject === null ? '' : String(currentProject);
         updateReleaseOptions(isTask, task?.releaseId ?? null);
         saveButton.textContent = entry ? 'Speichern' : '+';
-        saveButton.setAttribute('aria-label', entry ? 'Speichern' : (isFix ? 'Fix anlegen' : isFeature ? 'Feature anlegen' : isTask ? 'Aufgabe anlegen' : 'Projekt anlegen'));
-        saveButton.title = entry ? 'Speichern' : (isFix ? 'Fix anlegen' : isFeature ? 'Feature anlegen' : isTask ? 'Aufgabe anlegen' : 'Projekt anlegen');
+        const saveLabel = entry ? 'Speichern' : labels.add;
+        saveButton.setAttribute('aria-label', saveLabel);
+        saveButton.title = saveLabel;
         document.querySelector<HTMLElement>('#delete-entry')!.hidden = !task;
         editorError.hidden = true;
         editor.showModal();
@@ -293,10 +299,7 @@ function createEntryEditor(context: DialogContext & {
         else
             editing = null;
     });
-    form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (!editor.open || !editing || context.saving)
-            return;
+    function readFormFields(mode: EditorMode): import('./shared').BaseFields | undefined {
         const title = titleField.value.trim();
         if (!title) {
             editorError.textContent = 'Gib einen Namen ein.';
@@ -304,50 +307,76 @@ function createEntryEditor(context: DialogContext & {
             titleField.focus();
             return;
         }
-        if (editing.kind === 'project' && projectDueConflicts().length) {
+        if (mode.kind === 'project' && projectDueConflicts().length) {
             renderProjectDueConflicts();
             editorError.textContent = 'Passe zuerst die Fälligkeiten der aufgeführten Einträge an.';
             editorError.hidden = false;
             projectDueField.focus();
             return;
         }
-        const fields = { title, priority: priorityField.value as Priority, description: descriptionField.value };
-        const mode = editing;
+        return { title, priority: priorityField.value as Priority, description: descriptionField.value };
+    }
+
+    function closeEditor(): void {
+        editing = null;
+        editor.close();
+    }
+
+    async function saveProject(id: number | null, fields: import('./shared').BaseFields): Promise<void> {
+        const previousIds = new Set(context.workspace.projects.map(project => project.id));
+        context.workspace = await window.hq.saveProject(id, {
+            ...fields,
+            kind: projectKindField.value as ProjectKind,
+            dueDate: projectDueField.value || null,
+        }, context.workspace.revision, notes.draft);
+        closeEditor();
+        const newProject = context.workspace.projects.find(project => !previousIds.has(project.id));
+        context.showView(newProject?.id ?? context.view);
+        context.announce(id === null ? 'Projekt angelegt.' : 'Projekt gespeichert.');
+    }
+
+    async function saveTask(id: number | null, fields: import('./shared').BaseFields): Promise<void> {
+        const kind = editorTaskKind;
         const projectId = projectField.value ? Number(projectField.value) : null;
+        const releaseValue = targetVersionField.value;
+        const releaseId = releaseValue === 'keep-published' ? editorPublishedReleaseId : (releaseValue ? Number(releaseValue) : null);
+        context.workspace = await window.hq.saveTask(id, {
+            ...fields,
+            kind,
+            featureId: null,
+            releaseId,
+            criteria: kind === 'task' ? [] : draftCriteria,
+            subtasks: draftSubtasks,
+            projectId,
+            dueDate: dueField.value || null,
+            status: statusField.value as TaskStatus,
+            predecessorIds: [...selectedPredecessors],
+        }, context.workspace.revision, notes.draft);
+        closeEditor();
+        context.render();
+        context.focusHeading();
+        const moved = context.view === 'inbox' ? projectId !== null : projectId !== context.view;
+        const created = { task: 'Aufgabe angelegt.', feature: 'Feature angelegt.', fix: 'Fix angelegt.' };
+        context.announce(id === null ? created[kind] : moved ? 'Eintrag verschoben.' : 'Eintrag gespeichert.');
+    }
+
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const mode = editing;
+        if (!editor.open || !mode || context.saving)
+            return;
+        const fields = readFormFields(mode);
+        if (!fields)
+            return;
         context.saving = true;
         editorFields.disabled = true;
         saveButton.disabled = true;
         editorError.hidden = true;
         try {
-            if (mode.kind === 'project') {
-                const previousIds = new Set(context.workspace.projects.map(project => project.id));
-                context.workspace = await window.hq.saveProject(mode.id, { ...fields, kind: projectKindField.value as ProjectKind, dueDate: projectDueField.value || null }, context.workspace.revision, notes.draft);
-                editing = null;
-                editor.close();
-                const newProject = context.workspace.projects.find(project => !previousIds.has(project.id));
-                context.showView(newProject?.id ?? context.view);
-                context.announce(mode.id === null ? 'Projekt angelegt.' : 'Projekt gespeichert.');
-            }
-            else {
-                context.workspace = await window.hq.saveTask(mode.id, {
-                    ...fields,
-                    kind: editorTaskKind,
-                    featureId: null,
-                    releaseId: targetVersionField.value === 'keep-published' ? editorPublishedReleaseId : targetVersionField.value ? Number(targetVersionField.value) : null,
-                    criteria: editorTaskKind !== 'task' ? draftCriteria : [],
-                    subtasks: draftSubtasks,
-                    projectId,
-                    dueDate: dueField.value || null,
-                    status: statusField.value as TaskStatus,
-                    predecessorIds: [...selectedPredecessors]
-                }, context.workspace.revision, notes.draft);
-                editing = null;
-                editor.close();
-                context.render();
-                context.focusHeading();
-                const moved = (context.view === 'inbox' ? projectId !== null : projectId !== context.view);
-                context.announce(mode.id === null ? (editorTaskKind === 'feature' ? 'Feature angelegt.' : editorTaskKind === 'fix' ? 'Fix angelegt.' : 'Aufgabe angelegt.') : moved ? 'Eintrag verschoben.' : 'Eintrag gespeichert.');
-            }
+            if (mode.kind === 'project')
+                await saveProject(mode.id, fields);
+            else
+                await saveTask(mode.id, fields);
         }
         catch (error) {
             editorError.textContent = errorMessage(error);
