@@ -523,3 +523,19 @@ test('manual notes are editable in their entity editor with project-only deletio
  assert.match(node('#entry-notes').innerHTML,/Projektnotiz/);
  assert.match(node('#entry-notes').innerHTML,/data-remove-note/);
 });
+
+test('editor sends new and edited notes with the saved entry', async () => {
+ let sent;
+ const {api,node} = renderer({read:()=>new Promise(()=>{}), saveTask:async (...args) => { sent=args; return {revision:8,projects:[],tasks:[],subtasks:[],releases:[],history:[]}; }});
+ api.setWorkspace({revision:7,projects:[],tasks:[task(2,'Aufgabe',null)],subtasks:[],history:[{id:1,entityKind:'task',entityId:2,manual:true,newValue:'Alt'}]});
+ api.openEditor({kind:'task',id:2});
+ const field = node('#note-input'); field.dataset.noteText='0'; field.value='Neu';
+ node('#entry-notes').dispatch('input',{target:field});
+ node('#add-entry-note').dispatch('click');
+ const added = node('#new-note-input'); added.dataset.noteText='1'; added.value='Zusatz';
+ node('#entry-notes').dispatch('input',{target:added});
+ node('#entry-priority').value='normal'; node('#entry-status').value='planned';
+ await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
+ assert.equal(sent[0],2); assert.equal(sent[2],7);
+ assert.equal(JSON.stringify(sent[3]),JSON.stringify([{id:1,text:'Neu'},{id:null,text:'Zusatz'}]));
+});

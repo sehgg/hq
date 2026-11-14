@@ -363,7 +363,8 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
 .details-body section { margin-bottom: 20px; }
 .details-body h3 { color: var(--accent-secondary); font-size: 11px; text-transform: uppercase; margin: 0 0 5px; }
 .details-body p { margin: 0; font-size: 12px; }
-.details-metadata { display: flex; gap: 16px; flex-wrap: wrap; }
+.details-metadata { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.details-metadata p { overflow-wrap: anywhere; }
 .description { white-space: pre-wrap; overflow-wrap: anywhere; }
 .detail-list { list-style: none; margin: 0; padding: 0; font-size: 12px; }
 .detail-list li { margin: 5px 0; overflow-wrap: anywhere; }
@@ -401,7 +402,8 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
 .criterion-row { display: flex; gap: 5px; align-items: flex-start; margin-bottom: 5px; }
 .criterion-check { flex: none; padding-top: 7px; }
 .criterion-text { flex: 1; min-width: 0; }
-.criterion-text input { width: 100%; min-width: 0; min-height: 36px; padding: 5px 8px; border: 1px solid var(--border-strong); background: var(--rail); color: var(--text); font: inherit; }
+.criterion-text input, .criterion-text textarea { width: 100%; min-width: 0; min-height: 36px; padding: 5px 8px; border: 1px solid var(--border-strong); background: var(--rail); color: var(--text); font: inherit; }
+.criterion-text textarea { resize: vertical; }
 .danger { color: var(--error); border-color: color-mix(in srgb, var(--error) 40%, var(--background)); }
 .danger:hover { background: color-mix(in srgb, var(--error) 14%, var(--background)); }
 .delete-content { padding: 16px; }
