@@ -9,6 +9,7 @@ HQ is an Electron desktop application and a local CLI built from the same TypeSc
 | `ui/index.html`, `ui/styles.css` | Desktop markup, dialogs, layout, and styles. |
 | `src/renderer/renderer.mts` | Renders the workspace and coordinates navigation, selection, refresh, and the editors. |
 | `src/renderer/entry-editor.mts`, `src/renderer/release-editor.mts`, `src/renderer/note-editor.mts` | Set up dialog events and keep each editor’s draft local. Both editors use the same note editor factory. |
+| `src/renderer/predecessor-picker.mts` | Owns the predecessor dialog, eligible options, and selected IDs for the entry editor. |
 | `src/preload.ts`, `src/shared.ts` | Exposes the typed `window.hq` bridge through Electron's context bridge; shared types define workspaces and fields. |
 | `src/main.ts` | Creates the Electron window, opens the user database, and implements IPC handlers. |
 | `src/database/index.ts`, `src/database/database.ts` | Public entry point and implementation of `PlannerDatabase`: SQLite queries, transactions, and shared validation and completion rules. |

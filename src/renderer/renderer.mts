@@ -446,69 +446,40 @@ document.addEventListener('click', event => {
             break;
     }
 });
-document.addEventListener('change', async (event) => {
+function completionAction(checkbox: HTMLInputElement) {
+    const { criterion, subtask, complete } = checkbox.dataset;
+    const hq = window.hq;
+    if (criterion)
+        return { id: Number(criterion), save: hq.completeCriterion, isTask: false };
+    if (subtask)
+        return { id: Number(subtask), save: hq.completeSubtask, isTask: false };
+    if (complete)
+        return { id: Number(complete), save: hq.completeTask, isTask: true };
+}
+
+document.addEventListener('change', async event => {
     const checkbox = event.target;
     if (!(checkbox instanceof HTMLInputElement))
         return;
-    if (checkbox.dataset.criterion) {
-        const checked = checkbox.checked;
-        if (saving) {
-            checkbox.checked = !checked;
-            return;
-        }
-        saving = true;
-        checkbox.disabled = true;
-        try {
-            workspace = await window.hq.completeCriterion(Number(checkbox.dataset.criterion), checked, workspace.revision);
-            render();
-        }
-        catch (error) {
-            checkbox.checked = !checked;
-            announce(errorMessage(error), true);
-        }
-        finally {
-            checkbox.disabled = false;
-            saving = false;
-        }
+    const action = completionAction(checkbox);
+    if (!action)
         return;
-    }
-    if (checkbox.dataset.subtask) {
-        const checked = checkbox.checked;
-        if (saving) {
-            checkbox.checked = !checked;
-            return;
-        }
-        saving = true;
-        checkbox.disabled = true;
-        try {
-            workspace = await window.hq.completeSubtask(Number(checkbox.dataset.subtask), checked, workspace.revision);
-            render();
-        }
-        catch (error) {
-            checkbox.checked = !checked;
-            announce(errorMessage(error), true);
-        }
-        finally {
-            checkbox.disabled = false;
-            saving = false;
-        }
-        return;
-    }
-    if (!checkbox.dataset.complete)
-        return;
-    if (saving) {
-        checkbox.checked = !checkbox.checked;
-        return;
-    }
-    const id = Number(checkbox.dataset.complete);
+
     const completed = checkbox.checked;
+    if (saving) {
+        checkbox.checked = !completed;
+        return;
+    }
+
     saving = true;
     checkbox.disabled = true;
     try {
-        workspace = await window.hq.completeTask(id, completed, workspace.revision);
+        workspace = await action.save(action.id, completed, workspace.revision);
         render();
-        content.querySelector<HTMLInputElement>(`[data-complete="${id}"]`)?.focus({ preventScroll: true });
-        announce(completed ? 'Aufgabe erledigt.' : 'Aufgabe wieder geöffnet.');
+        if (action.isTask) {
+            content.querySelector<HTMLInputElement>(`[data-complete="${action.id}"]`)?.focus({ preventScroll: true });
+            announce(completed ? 'Aufgabe erledigt.' : 'Aufgabe wieder geöffnet.');
+        }
     }
     catch (error) {
         checkbox.checked = !completed;

@@ -1,5 +1,6 @@
 import type { BaseFields, CriterionFields, Priority, Project, ProjectKind, SubtaskFields, Task, TaskKind, TaskStatus } from '../shared.js';
 import type { DialogContext, View } from './dialog-context.mjs';
+import { createPredecessorPicker } from './predecessor-picker.mjs';
 import { createNoteEditor } from './note-editor.mjs';
 import { errorMessage, escapeHtml } from './view-format.mjs';
 
@@ -32,12 +33,7 @@ export function createEntryEditor(context: DialogContext & {
     const descriptionField = document.querySelector<HTMLTextAreaElement>('#entry-description')!;
     const dueField = document.querySelector<HTMLInputElement>('#entry-due')!;
     const statusField = document.querySelector<HTMLSelectElement>('#entry-status')!;
-    const predecessorDialog = document.querySelector<HTMLDialogElement>('#predecessor-dialog')!;
-    const predecessorProject = document.querySelector<HTMLSelectElement>('#predecessor-project')!;
-    const predecessorTask = document.querySelector<HTMLSelectElement>('#predecessor-task')!;
-    const confirmPredecessor = document.querySelector<HTMLButtonElement>('#confirm-predecessor')!;
-    const predecessorEmpty = document.querySelector<HTMLElement>('#predecessor-empty')!;
-    const predecessorField = document.querySelector<HTMLElement>('#entry-predecessors')!;
+    const predecessors = createPredecessorPicker(() => context.workspace);
 
     const editor = document.querySelector<HTMLDialogElement>('#editor')!;
     const form = document.querySelector<HTMLFormElement>('#editor-form')!;
@@ -56,7 +52,6 @@ export function createEntryEditor(context: DialogContext & {
     let editing: EditorMode | null = null;
 
     let pendingDeleteTaskId: number | null = null;
-    let selectedPredecessors = new Set<number>();
     let draftCriteria: CriterionFields[] = [];
     let draftSubtasks: SubtaskFields[] = [];
 
@@ -156,8 +151,7 @@ export function createEntryEditor(context: DialogContext & {
         document.querySelector<HTMLElement>('#task-fields')!.hidden = !isTask;
         dueField.value = task?.dueDate ?? '';
         statusField.value = task?.status ?? 'planned';
-        selectedPredecessors = new Set(task?.predecessorIds ?? []);
-        renderSelectedPredecessors();
+        predecessors.reset(mode.id, task?.predecessorIds ?? []);
         projectField.replaceChildren(...(isFeature ? [] : [new Option('Posteingang', '')]), ...context.workspace.projects.filter(project => !isFeature || project.kind === 'software').map(project => new Option(project.title, String(project.id))));
         projectField.value = currentProject === null ? '' : String(currentProject);
         updateReleaseOptions(isTask, task?.releaseId ?? null);
@@ -247,52 +241,6 @@ export function createEntryEditor(context: DialogContext & {
             renderCriteriaEditor();
         }
     });
-    function renderSelectedPredecessors(): void {
-        const selected = context.workspace.tasks.filter(task => selectedPredecessors.has(task.id));
-        predecessorField.innerHTML = selected.length ? selected.map(task => {
-            const project = context.workspace.projects.find(item => item.id === task.projectId);
-            return `<div class="selected-predecessor"><span>${escapeHtml(task.title)} <span class="muted">· ${escapeHtml(project?.title ?? 'Posteingang')}</span></span><button type="button" class="button compact" data-remove-predecessor="${task.id}" aria-label="${escapeHtml(task.title)} als Vorgänger entfernen">−</button></div>`;
-        }).join('') : '';
-    }
-    function updatePredecessorTasks(): void {
-        const selectedProject = predecessorProject.value;
-        const available = selectedProject === '' ? [] : context.workspace.tasks.filter(task => task.id !== editing?.id && !selectedPredecessors.has(task.id) &&
-            (selectedProject === 'inbox' ? task.projectId === null : task.projectId === Number(selectedProject)));
-        predecessorTask.replaceChildren(new Option('Aufgabe auswählen', ''), ...available.map(task => new Option(task.title, String(task.id))));
-        predecessorTask.disabled = selectedProject === '' || available.length === 0;
-        predecessorEmpty.hidden = selectedProject === '' || available.length > 0;
-        confirmPredecessor.disabled = true;
-    }
-    document.querySelector<HTMLButtonElement>('#add-predecessor')!.addEventListener('click', () => {
-        predecessorProject.replaceChildren(new Option('Projekt auswählen', ''), new Option('Posteingang', 'inbox'), ...context.workspace.projects.map(project => new Option(project.title, String(project.id))));
-        updatePredecessorTasks();
-        predecessorDialog.showModal();
-        predecessorProject.focus();
-    });
-    predecessorProject.addEventListener('change', updatePredecessorTasks);
-    predecessorTask.addEventListener('change', () => {
-        confirmPredecessor.disabled = !predecessorTask.value;
-    });
-    for (const id of ['close-predecessor', 'cancel-predecessor'])
-        document.querySelector(`#${id}`)!.addEventListener('click', () => predecessorDialog.close());
-    predecessorField.addEventListener('click', event => {
-        if (!(event.target instanceof Element))
-            return;
-        const button = event.target.closest<HTMLButtonElement>('[data-remove-predecessor]');
-        if (button) {
-            selectedPredecessors.delete(Number(button.dataset.removePredecessor));
-            renderSelectedPredecessors();
-        }
-    });
-    document.querySelector<HTMLFormElement>('#predecessor-form')!.addEventListener('submit', event => {
-        event.preventDefault();
-        if (!predecessorTask.value)
-            return;
-        selectedPredecessors.add(Number(predecessorTask.value));
-        renderSelectedPredecessors();
-        predecessorDialog.close();
-    });
-
     for (const id of ['close-editor', 'cancel-editor']) {
         document.querySelector(`#${id}`)!.addEventListener('click', () => {
             if (!context.saving) {
@@ -358,7 +306,7 @@ export function createEntryEditor(context: DialogContext & {
             projectId,
             dueDate: dueField.value || null,
             status: statusField.value as TaskStatus,
-            predecessorIds: [...selectedPredecessors],
+            predecessorIds: predecessors.getSelectedIds(),
         }, context.workspace.revision, notes.draft);
         closeEditor();
         context.render();

@@ -553,3 +553,37 @@ test('entry and release editors save independent note drafts with their own IDs'
     {id: 2, notes: [{id: 10, text: 'Task draft'}]},
   ]);
 });
+
+test('completion checkboxes route updates and restore the checkbox when saving fails', async () => {
+  const workspace = { revision: 3, projects: [], tasks: [], subtasks: [], releases: [], history: [] };
+  const calls = [];
+  const { api, change, node } = await renderer({
+    read: () => new Promise(() => {}),
+    completeTask: async (id, checked, revision) => {
+      calls.push(['task', id, checked, revision]);
+      return { ...workspace, revision: 4 };
+    },
+    completeSubtask: async (id, checked, revision) => {
+      calls.push(['subtask', id, checked, revision]);
+      throw new Error('Unteraufgabe konnte nicht gespeichert werden.');
+    },
+  });
+  api.setWorkspace(workspace);
+
+  const entry = node('#test-task-complete');
+  entry.dataset.complete = '12';
+  entry.checked = true;
+  await change(entry);
+  assert.equal(entry.disabled, false);
+  assert.equal(api.getWorkspace().revision, 4);
+
+  const subtask = node('#test-subtask-complete');
+  subtask.dataset.subtask = '24';
+  subtask.checked = true;
+  await change(subtask);
+  assert.equal(subtask.checked, false);
+  assert.equal(subtask.disabled, false);
+  assert.equal(api.getWorkspace().revision, 4);
+  assert.match(node('#notice').textContent, /Unteraufgabe konnte nicht gespeichert werden/);
+  assert.deepEqual(calls, [['task', 12, true, 3], ['subtask', 24, true, 4]]);
+});
