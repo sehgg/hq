@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { PlannerDatabase } from './database';
+import { PlannerDatabase, WorkspaceConflictError } from './database';
 import type { CriterionFields, Task, TaskFields, Workspace } from './shared';
 
 class CliError extends Error { constructor(readonly code: string, message: string, readonly exitCode: number) { super(message); } }
@@ -264,7 +264,9 @@ function run(): void {
 }
 try { run(); } catch (error) {
  const message=error instanceof Error ? error.message : 'Unbekannter Fehler.';
- const code=error instanceof CliError ? error.code : message.includes('zwischenzeitlich geändert') ? 'CONFLICT' : /database is locked|SQLITE_BUSY/i.test(message) ? 'DATABASE_BUSY' : 'VALIDATION_ERROR';
+ const code=error instanceof CliError || error instanceof WorkspaceConflictError
+   ? error.code
+   : /database is locked|SQLITE_BUSY/i.test(message) ? 'DATABASE_BUSY' : 'VALIDATION_ERROR';
  const exitCode=error instanceof CliError ? error.exitCode : code==='CONFLICT'||code==='DATABASE_BUSY' ? 5 : 2;
  if (json) process.stderr.write(JSON.stringify({ok:false,error:{code,message}})+'\n'); else process.stderr.write(`${code}: ${message}\n`);
  process.exitCode=exitCode;

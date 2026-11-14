@@ -1,1 +1,1 @@
-export { PlannerDatabase } from './database';
+export { PlannerDatabase, WorkspaceConflictError } from './database';

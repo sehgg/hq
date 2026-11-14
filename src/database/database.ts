@@ -35,6 +35,10 @@ function status(value: unknown): TaskStatus {
         throw new Error('Dieser Status ist ungültig.');
     return value;
 }
+export class WorkspaceConflictError extends Error {
+    readonly code = 'CONFLICT';
+}
+
 export class PlannerDatabase {
     private readonly db: DatabaseSync;
     constructor(path: string) {
@@ -117,7 +121,7 @@ export class PlannerDatabase {
                 revision: number;
             }).revision;
             if (revision !== expectedRevision)
-                throw new Error('Der Arbeitsbereich wurde zwischenzeitlich geändert. Bitte neu laden und erneut versuchen.');
+                throw new WorkspaceConflictError('Der Arbeitsbereich wurde zwischenzeitlich geändert. Bitte neu laden und erneut versuchen.');
             const before = this.read();
             const result = operation();
             recordChanges(this.db, before, this.read());

@@ -1,10 +1,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { mkdtempSync, rmSync } = require('node:fs');
+const { mkdtempSync, readFileSync, rmSync } = require('node:fs');
 const { join } = require('node:path');
 const { tmpdir } = require('node:os');
 const { spawnSync } = require('node:child_process');
-const { PlannerDatabase } = require('../dist/database');
+const { runInNewContext } = require('node:vm');
+const { PlannerDatabase, WorkspaceConflictError } = require('../dist/database');
 function fixture(t) {
     const dir = mkdtempSync(join(tmpdir(), 'hq-cli-'));
     const path = join(dir, 'workspace.sqlite'), db = new PlannerDatabase(path);
@@ -87,6 +88,43 @@ test('CLI and desktop connections reject stale writes and preserve both changes'
     assert.throws(() => db.mutate(cliSnapshot.revision, () => db.saveTask(created.body.data.id, { ...created.body.data, title: 'Alt' })), /zwischenzeitlich geändert/);
     assert.equal(db.read().tasks.find(x => x.id === created.body.data.id).title, 'Extern');
     assert.equal(db.read().projects[0].description, 'Desktopänderung');
+});
+test('CLI maps a stale revision to CONFLICT and exit code 5 independently of the error message', t => {
+    const { db, path } = fixture(t);
+    const revision = db.read().revision;
+    assert.throws(() => db.mutate(revision - 1, () => assert.fail('Stale write ran')), {
+        code: 'CONFLICT',
+        message: /zwischenzeitlich geändert/,
+    });
+
+    // Simulate the conflict at the CLI write boundary with different display text.
+    class ConflictingDatabase extends PlannerDatabase {
+        mutate() {
+            throw new WorkspaceConflictError('Please reload and retry.');
+        }
+    }
+
+    let stderr = '';
+    const cliProcess = {
+        argv: ['node', 'dist/cli.js', 'create', '--inbox', '--title', 'Stale', '--db', path, '--json'],
+        platform: process.platform,
+        env: process.env,
+        stderr: { write: output => { stderr += output; } },
+    };
+    runInNewContext(readFileSync('dist/cli.js', 'utf8'), {
+        Error,
+        exports: {},
+        process: cliProcess,
+        require: id => id === './database'
+            ? { PlannerDatabase: ConflictingDatabase, WorkspaceConflictError }
+            : require(id),
+    });
+    assert.equal(cliProcess.exitCode, 5);
+    assert.deepEqual(JSON.parse(stderr), {
+        ok: false,
+        error: { code: 'CONFLICT', message: 'Please reload and retry.' },
+    });
+    assert.equal(db.read().revision, revision);
 });
 test('duplicate project names require a project ID and never select one implicitly', t => {
     const { db, run } = fixture(t);
