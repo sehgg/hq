@@ -159,6 +159,13 @@ const priorityNames: Record<Priority, string> = { high: 'Hoch', normal: 'Normal'
 let workspace: Workspace = { revision: 0, projects: [], tasks: [], subtasks: [], releases: [] };
 let view: View = 'inbox';
 let activeTab: TaskKind | 'releases' = 'task';
+const showCompleted = new Set<string>();
+
+function visibilityKey(): string { return `${view}:${activeTab}`; }
+function visibilityButton(): string {
+  const shown = showCompleted.has(visibilityKey());
+  return `<button type="button" class="button secondary" data-action="toggle-completed" aria-pressed="${shown}">${shown ? 'Erledigte ausblenden' : 'Erledigte anzeigen'}</button>`;
+}
 let pendingReleaseId: number | null = null;
 let editingReleaseId: number | null = null;
 let editorPublishedReleaseId: number | null = null;
@@ -260,8 +267,9 @@ function taskRow(task: Task): string {
 function taskPanel(project: Project | undefined): string {
   const projectId = project?.id ?? null;
   const kind: TaskKind = project?.kind === 'software' && activeTab !== 'releases' ? activeTab : 'task';
-  const tasks = workspace.tasks.filter(task => task.kind === kind && task.projectId === projectId);
+  const tasks = workspace.tasks.filter(task => task.kind === kind && task.projectId === projectId && (showCompleted.has(visibilityKey()) || !task.completed));
   return `<section class="panel task-panel" aria-label="${kind === 'feature' ? 'Features' : kind === 'fix' ? 'Fixes' : 'Aufgaben'}">
+    ${visibilityButton()}
     <div class="task-columns" aria-hidden="true"><span></span><span>Titel</span><span>Status</span><span>Priorität</span><span>Fälligkeit</span><span></span></div>
     ${tasks.length
       ? `<ul class="list">${tasks.map(task => taskRow(task)).join('')}</ul>`
@@ -272,11 +280,12 @@ function taskPanel(project: Project | undefined): string {
 }
 
 function releasePanel(project: Project): string {
-  const releases = workspace.releases.filter(item => item.projectId === project.id);
+  const releases = workspace.releases.filter(item => item.projectId === project.id && (showCompleted.has(visibilityKey()) || !item.published));
   return `<section class="panel" aria-labelledby="release-heading"><header class="panel-header"><h2 id="release-heading">Releases</h2><span class="panel-meta">${releases.length} ${releases.length === 1 ? 'Release' : 'Releases'}</span></header>
+    ${visibilityButton()}
     ${releases.length ? `<ul class="list">${releases.map(release => {
       const items = workspace.tasks.filter(task => task.releaseId === release.id);
-      return `<li class="release-row"><div class="release-heading"><button type="button" class="release-open" data-action="show-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} öffnen"><strong>${escapeHtml(release.version)}</strong> <span class="muted">${releaseStatusNames[release.status]}</span>${release.dueDate ? `<span class="release-due">Fällig am ${escapeHtml(release.dueDate.split('-').reverse().join('.'))}</span>` : ''}</button><div class="release-actions"><button type="button" class="button compact" data-action="edit-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} bearbeiten" title="Release bearbeiten">B</button>${release.published ? '' : `<button type="button" class="button compact" data-action="publish-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} veröffentlichen">Veröffentlichen</button>`}</div></div><ul class="detail-list">${items.length ? items.map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${item.kind === 'task' ? 'Aufgabe' : item.kind === 'fix' ? 'Fix' : 'Feature'} · ${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') : '<li class="muted">Keine Aufgaben, Features oder Fixes zugeordnet</li>'}</ul></li>`;
+      return `<li class="release-row"><div class="release-heading"><button type="button" class="release-open" data-action="show-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} öffnen"><strong>${escapeHtml(release.version)}</strong> <span class="muted">${releaseStatusNames[release.status]}</span>${release.dueDate ? `<span class="release-due">Fällig am ${escapeHtml(release.dueDate.split('-').reverse().join('.'))}</span>` : ''}</button><div class="release-actions"><button type="button" class="button compact" data-action="edit-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} bearbeiten" title="Release bearbeiten">B</button>${release.published ? '' : `<button type="button" class="button compact" data-action="publish-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} veröffentlichen">Veröffentlichen</button>`}</div></div>${([["task", "Aufgaben"], ["feature", "Features"], ["fix", "Fixes"]] as const).map(([kind, label]) => `<section><h3>${label}</h3><ul class="detail-list">${items.filter(item => item.kind === kind).map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') || '<li class="muted">Keine</li>'}</ul></section>`).join('')}</li>`;
     }).join('')}</ul>` : emptyState('Noch keine Releases', 'Plane eine Version für dieses Softwareprojekt.', addButton('new-release', 'Release anlegen', 'secondary'))}</section>`;
 }
 function updateReleaseOptions(show: boolean, selectedId: number | null): void {
@@ -665,6 +674,13 @@ document.addEventListener('click', event => {
   }
 
   switch (target.dataset.action) {
+    case 'toggle-completed': {
+      const key = visibilityKey();
+      if (showCompleted.has(key)) showCompleted.delete(key);
+      else showCompleted.add(key);
+      render();
+      break;
+    }
     case 'tab-task': activeTab = 'task'; selectedTaskId = null; selectedReleaseId = null; render(); break;
     case 'tab-feature': activeTab = 'feature'; selectedTaskId = null; selectedReleaseId = null; render(); break;
     case 'tab-releases': activeTab = 'releases'; selectedTaskId = null; selectedReleaseId = null; render(); break;

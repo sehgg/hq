@@ -336,9 +336,9 @@ test('release tab plans and publishes parallel releases while preserving shipped
   const v04=db.read().releases.find(r=>r.version==='v0.4.0').id,v05=db.read().releases.find(r=>r.version==='v0.5.0').id;
   click('tab-fix'); click('new-task'); node('#entry-title').value='Fix'; node('#entry-priority').value='normal'; node('#entry-status').value='done'; node('#entry-target-version').value=String(v04); await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
   click('tab-feature'); click('new-task'); node('#entry-title').value='Feature'; node('#entry-priority').value='normal'; node('#entry-status').value='planned'; node('#entry-target-version').value=String(v05); await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
-  click('tab-releases'); let html=node('#content').innerHTML; assert.match(html,/v0\.4\.0/); assert.match(html,/v0\.5\.0/); assert.match(html,/Fix · Fix/); assert.match(html,/Feature · Feature/);
-  click('publish-release',v04); assert.equal(node('#publish-dialog').open,true); await node('#confirm-publish').dispatchAsync('click');
-  html=node('#content').innerHTML; assert.match(html,/Veröffentlicht/); assert.match(html,/Fix · Fix/); assert.match(html,/v0\.5\.0/);
+  click('tab-releases'); let html=node('#content').innerHTML; assert.match(html,/v0\.4\.0/); assert.match(html,/v0\.5\.0/); assert.match(html,/Fix · Erledigt/); assert.match(html,/Feature · Geplant/);
+  click('toggle-completed'); click('publish-release',v04); assert.equal(node('#publish-dialog').open,true); await node('#confirm-publish').dispatchAsync('click');
+  html=node('#content').innerHTML; assert.match(html,/Veröffentlicht/); assert.match(html,/Fix · Erledigt/); assert.match(html,/v0\.5\.0/);
   const fix=db.read().tasks.find(item=>item.title==='Fix'); api.selectTask(fix.id); assert.match(node('#details').innerHTML,/v0\.4\.0 \(veröffentlicht\)/);
   api.openEditor({kind:'task',id:fix.id}); const options=node('#entry-target-version').children;
   assert.equal(options.some(option=>option.text==='v0.4.0'),false); assert.equal(options.some(option=>option.text==='v0.5.0'),true);
@@ -348,7 +348,7 @@ test('release tab plans and publishes parallel releases while preserving shipped
   api.setTab('fix'); api.openEditor({kind:'task',id:null});
   assert.equal(node('#entry-target-version').children.some(option=>option.text==='v0.4.0'),false); assert.equal(node('#entry-target-version').children.some(option=>option.text==='v0.5.0'),true);
   db.close(); db=new PlannerDatabase(path); api.setWorkspace(db.read()); api.setTab('releases'); api.render();
-  html=node('#content').innerHTML; assert.match(html,/v0\.4\.0/); assert.match(html,/Veröffentlicht/); assert.match(html,/Fix · Fix bearbeitet/); assert.match(html,/Feature · Feature/);
+  html=node('#content').innerHTML; assert.match(html,/v0\.4\.0/); assert.match(html,/Veröffentlicht/); assert.match(html,/Fix bearbeitet · Geplant/); assert.match(html,/Feature · Geplant/);
   db.close();
 });
 
@@ -426,7 +426,7 @@ test('a task can be assigned in the editor and blocks its release until complete
   node('#entry-title').value='Dokumentation'; node('#entry-priority').value='normal'; node('#entry-status').value='planned'; node('#entry-target-version').value=String(release);
   await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
   let task=db.read().tasks.find(item=>item.title==='Dokumentation'); assert.equal(task.releaseId,release);
-  click('tab-releases'); assert.match(node('#content').innerHTML,/Aufgabe · Dokumentation · Geplant/);
+  click('tab-releases'); assert.match(node('#content').innerHTML,/Dokumentation · Geplant/);
   click('show-release',release); assert.match(node('#details').innerHTML,/<h3>Aufgaben<\/h3>/); assert.match(node('#details').innerHTML,/Dokumentation · Geplant/);
   click('publish-release',release); assert.match(node('#publish-description').textContent,/Aufgabe: Dokumentation \(Geplant\)/);
   await node('#confirm-publish').dispatchAsync('click'); assert.match(node('#publish-error').textContent,/Aufgabe: Dokumentation/); assert.equal(db.read().releases[0].published,false);
@@ -434,7 +434,7 @@ test('a task can be assigned in the editor and blocks its release until complete
   await node('#release-form').dispatchAsync('submit',{preventDefault(){}}); assert.match(node('#release-error').textContent,/Aufgabe: Dokumentation/);
   node('#cancel-release').dispatch('click'); api.openEditor({kind:'task',id:task.id}); assert.equal(node('#entry-target-version').value,String(release));
   node('#entry-status').value='done'; await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
-  assert.match(node('#content').innerHTML,/Aufgabe · Dokumentation · Erledigt/);
+  assert.match(node('#content').innerHTML,/Dokumentation · Erledigt/);
   click('publish-release',release); await node('#confirm-publish').dispatchAsync('click'); assert.equal(db.read().releases[0].published,true);
   db.close(); db=new PlannerDatabase(path); task=db.read().tasks.find(item=>item.title==='Dokumentation');
   assert.equal(task.releaseId,release); assert.equal(task.status,'done'); assert.equal(db.read().releases[0].status,'published'); db.close();
@@ -461,4 +461,19 @@ test('release status edits show all states and prevent publication while feature
   assert.equal(db.read().releases[0].status,'published'); assert.equal(db.read().tasks[0].targetVersion,'v1.1');
   click('show-task',feature.id); assert.match(node('#details').innerHTML,/v1\.1 \(veröffentlicht\)/);
   db.close();
+});
+
+test('overview visibility toggles completed entries and groups release entries by type', () => {
+  const {api,node,click}=renderer();
+  const project={id:1,title:'Projekt',kind:'software',priority:'normal',description:'',dueDate:null};
+  const releases=[{id:1,projectId:1,version:'v1',status:'planned',published:false,dueDate:null},{id:2,projectId:1,version:'v2',status:'published',published:true,dueDate:null}];
+  api.setWorkspace({projects:[project],releases,tasks:[task(1,'Offen',1,{releaseId:1}),task(2,'Fertig',1,{completed:true,status:'done',releaseId:1}),task(3,'Funktion',1,{kind:'feature',releaseId:1}),task(4,'Fehler',1,{kind:'fix',releaseId:1}),task(5,'Inbox fertig',null,{completed:true,status:'done'})],subtasks:[]});
+  api.showView(1); assert.match(node('#content').innerHTML,/Offen/); assert.doesNotMatch(node('#content').innerHTML,/Fertig/);
+  click('toggle-completed'); assert.match(node('#content').innerHTML,/Fertig/);
+  api.showView('inbox'); assert.doesNotMatch(node('#content').innerHTML,/Inbox fertig/); click('toggle-completed'); assert.match(node('#content').innerHTML,/Inbox fertig/);
+  api.showView(1); click('tab-releases');
+  assert.doesNotMatch(node('#content').innerHTML,/Release v2 öffnen/);
+  assert.match(node('#content').innerHTML,/<h3>Aufgaben<\/h3>[\s\S]*Fertig[\s\S]*<h3>Features<\/h3>[\s\S]*Funktion[\s\S]*<h3>Fixes<\/h3>[\s\S]*Fehler/);
+  click('toggle-completed'); assert.match(node('#content').innerHTML,/Release v2 öffnen/);
+  click('show-release',1); assert.match(node('#details').innerHTML,/Fertig/);
 });
