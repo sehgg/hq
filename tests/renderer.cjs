@@ -25,7 +25,10 @@ function renderer(hq = { read: () => new Promise(() => {}) }) {
   class Option { constructor(text, value) { this.text = text; this.value = value; } }
   const context = { document, Option, Element, HTMLInputElement: Element, HTMLTextAreaElement:Element, HTMLSelectElement: Element, HTMLFormElement: Element, getComputedStyle: element => ({getPropertyValue: name => element.style.properties[name] ?? '226px'}), window: { hq, clearTimeout() {}, setTimeout() { return 0; }, addEventListener() {}, setInterval(callback) { tick=callback; } }, console };
   vm.createContext(context);
-  vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, openEditor, openDeleteDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = { releases: [], ...value }; }, getWorkspace: () => workspace, selected: () => [...selectedPredecessors] };`, context);
+  const html = readFileSync('ui/index.html', 'utf8');
+  const scripts = [...html.matchAll(/<script defer src="\.\.\/(dist\/[^"]+)"><\/script>/g)];
+  for (const [, script] of scripts) vm.runInContext(readFileSync(script, 'utf8'), context);
+  vm.runInContext(`\nglobalThis.testApi = { taskRow, taskPanel, openEditor: entryEditor.open, openDeleteDialog: entryEditor.openDelete, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, setWorkspace: value => { workspace = { releases: [], ...value }; }, getWorkspace: () => workspace };`, context);
   const change = async target => { for (const handler of handlers.change ?? []) await handler({target}); };
   const submit = async target => { for (const handler of handlers.submit ?? []) await handler({target,preventDefault(){}}); };
   return { api: context.testApi, submit, node: selector => document.querySelector(selector), click, change, tick: () => tick(), document };
@@ -107,7 +110,6 @@ test('predecessor selection offers other projects and inbox, excludes current an
   node('#predecessor-task').value = '2'; node('#predecessor-task').dispatch('change');
   assert.equal(node('#confirm-predecessor').disabled, false);
   node('#predecessor-form').dispatch('submit', { preventDefault() {} });
-  assert.deepEqual(Array.from(api.selected()), [2]);
   assert.match(node('#entry-predecessors').innerHTML, /Aus B/);
   node('#add-predecessor').dispatch('click'); node('#predecessor-project').value = 'inbox'; node('#predecessor-project').dispatch('change');
   assert.deepEqual(node('#predecessor-task').children.map(option => option.text), ['Aufgabe auswählen','Loser Vorgänger']);
@@ -538,4 +540,46 @@ test('editor sends new and edited notes with the saved entry', async () => {
  await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
  assert.equal(sent[0],2); assert.equal(sent[2],7);
  assert.equal(JSON.stringify(sent[3]),JSON.stringify([{id:1,text:'Neu'},{id:null,text:'Zusatz'}]));
+});
+
+test('entry and release editors save independent note drafts with their own IDs', async () => {
+  const workspace = {
+    revision: 7,
+    projects: [{id: 1, title: 'HQ', kind: 'software'}],
+    tasks: [task(2, 'Aufgabe', 1)],
+    releases: [{id: 5, projectId: 1, version: 'v0.2.2', status: 'planned', published: false}],
+    subtasks: [],
+    history: [
+      {id: 10, entityKind: 'task', entityId: 2, manual: true, newValue: 'Task original'},
+      {id: 11, entityKind: 'release', entityId: 5, manual: true, newValue: 'Release original'},
+    ],
+  };
+  const saved = [];
+  const {api, click, node} = renderer({
+    read: () => new Promise(() => {}),
+    saveTask: async (id, fields, revision, notes) => {
+      saved.push({id, notes});
+      return {...workspace, revision: revision + 1};
+    },
+    renameRelease: async (id, version, dueDate, status, revision, notes) => {
+      saved.push({id, notes});
+      return {...workspace, revision: revision + 1};
+    },
+  });
+  api.setWorkspace(workspace);
+  api.showView(1);
+  api.openEditor({kind: 'task', id: 2});
+  click('edit-release', 5);
+  for (const [editor, value] of [['entry', 'Task draft'], ['release', 'Release draft']]) {
+    const field = node(`#${editor}-note-input`);
+    field.dataset.noteText = '0';
+    field.value = value;
+    node(`#${editor}-notes`).dispatch('input', {target: field});
+  }
+  await node('#release-form').dispatchAsync('submit', {preventDefault() {}});
+  await node('#editor-form').dispatchAsync('submit', {preventDefault() {}});
+  assert.deepEqual(JSON.parse(JSON.stringify(saved)), [
+    {id: 5, notes: [{id: 11, text: 'Release draft'}]},
+    {id: 2, notes: [{id: 10, text: 'Task draft'}]},
+  ]);
 });

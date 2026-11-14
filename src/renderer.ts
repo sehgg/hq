@@ -22,57 +22,12 @@ type EditorMode = {
 interface Window {
     hq: HqApi;
 }
-const deleteReleaseDialog = document.querySelector<HTMLDialogElement>('#delete-release-dialog')!;
-const deleteReleaseDescription = document.querySelector<HTMLElement>('#delete-release-description')!;
-const deleteReleaseError = document.querySelector<HTMLElement>('#delete-release-error')!;
-const confirmDeleteRelease = document.querySelector<HTMLButtonElement>('#confirm-delete-release')!;
-const cancelDeleteRelease = document.querySelector<HTMLButtonElement>('#cancel-delete-release')!;
-const releaseDialog = document.querySelector<HTMLDialogElement>('#release-dialog')!;
-const releaseForm = document.querySelector<HTMLFormElement>('#release-form')!;
-const releaseStatus = document.querySelector<HTMLSelectElement>('#release-status')!;
-const releaseDue = document.querySelector<HTMLInputElement>('#release-due')!;
-const releaseVersion = document.querySelector<HTMLInputElement>('#release-version')!;
-const releaseTitle = document.querySelector<HTMLElement>('#release-dialog-title')!;
-const saveRelease = document.querySelector<HTMLButtonElement>('#save-release')!;
-const releaseError = document.querySelector<HTMLElement>('#release-error')!;
-const publishDialog = document.querySelector<HTMLDialogElement>('#publish-dialog')!;
-const publishDescription = document.querySelector<HTMLElement>('#publish-description')!;
-const publishError = document.querySelector<HTMLElement>('#publish-error')!;
-const confirmPublish = document.querySelector<HTMLButtonElement>('#confirm-publish')!;
 const publishedVersion = document.querySelector<HTMLElement>('#published-version')!;
-const deleteDialog = document.querySelector<HTMLDialogElement>('#delete-dialog')!;
-const deleteTitle = document.querySelector<HTMLElement>('#delete-title')!;
-const deleteDescription = document.querySelector<HTMLElement>('#delete-description')!;
-const deleteError = document.querySelector<HTMLElement>('#delete-error')!;
-const confirmDelete = document.querySelector<HTMLButtonElement>('#confirm-delete')!;
-const cancelDelete = document.querySelector<HTMLButtonElement>('#cancel-delete')!;
 const details = document.querySelector<HTMLElement>('#details')!;
-const targetVersionField = document.querySelector<HTMLSelectElement>('#entry-target-version')!;
-const criteriaField = document.querySelector<HTMLElement>('#entry-criteria')!;
-const descriptionField = document.querySelector<HTMLTextAreaElement>('#entry-description')!;
-const dueField = document.querySelector<HTMLInputElement>('#entry-due')!;
-const statusField = document.querySelector<HTMLSelectElement>('#entry-status')!;
-const predecessorDialog = document.querySelector<HTMLDialogElement>('#predecessor-dialog')!;
-const predecessorProject = document.querySelector<HTMLSelectElement>('#predecessor-project')!;
-const predecessorTask = document.querySelector<HTMLSelectElement>('#predecessor-task')!;
-const confirmPredecessor = document.querySelector<HTMLButtonElement>('#confirm-predecessor')!;
-const predecessorEmpty = document.querySelector<HTMLElement>('#predecessor-empty')!;
-const predecessorField = document.querySelector<HTMLElement>('#entry-predecessors')!;
 const sidebarNav = document.querySelector<HTMLElement>('#navigation')!;
 const main = document.querySelector<HTMLElement>('#main')!;
 const content = document.querySelector<HTMLElement>('#content')!;
 const notice = document.querySelector<HTMLElement>('#notice')!;
-const editor = document.querySelector<HTMLDialogElement>('#editor')!;
-const form = document.querySelector<HTMLFormElement>('#editor-form')!;
-const titleField = document.querySelector<HTMLInputElement>('#entry-title')!;
-const priorityField = document.querySelector<HTMLSelectElement>('#entry-priority')!;
-const projectDueField = document.querySelector<HTMLInputElement>('#entry-project-due')!;
-const projectDueConflictBox = document.querySelector<HTMLElement>('#project-due-conflicts')!;
-const projectKindField = document.querySelector<HTMLSelectElement>('#entry-project-kind')!;
-const projectField = document.querySelector<HTMLSelectElement>('#entry-project')!;
-const editorFields = document.querySelector<HTMLFieldSetElement>('#editor-fields')!;
-const editorError = document.querySelector<HTMLElement>('#editor-error')!;
-const saveButton = document.querySelector<HTMLButtonElement>('#save-entry')!;
 const shell = document.querySelector<HTMLElement>('.shell')!;
 const sidebar = document.querySelector<HTMLElement>('#sidebar')!;
 const sidebarResize = document.querySelector<HTMLElement>('#sidebar-resize')!;
@@ -202,54 +157,9 @@ function visibilityButton(): string {
     const shown = showCompleted.has(visibilityKey());
     return `<button type="button" class="button secondary" data-action="toggle-completed" aria-pressed="${shown}">${shown ? 'Erledigte ausblenden' : 'Erledigte anzeigen'}</button>`;
 }
-let pendingReleaseId: number | null = null;
-let editingReleaseId: number | null = null;
-let editorPublishedReleaseId: number | null = null;
-let editorTaskKind: TaskKind = 'task';
-let editing: EditorMode | null = null;
 let saving = false;
 let selectedTaskId: number | null = null;
 let selectedReleaseId: number | null = null;
-let pendingDeleteReleaseId: number | null = null;
-let pendingDeleteTaskId: number | null = null;
-let selectedPredecessors = new Set<number>();
-let draftCriteria: CriterionFields[] = [];
-let draftSubtasks: SubtaskFields[] = [];
-let draftNotes: NoteFields[] = [];
-let draftNoteKind: HistoryKind = 'task';
-let noteContainer: HTMLElement;
-function openNotes(kind: HistoryKind, id: number | null, selector: string): void {
-    draftNoteKind = kind;
-    noteContainer = document.querySelector<HTMLElement>(selector)!;
-    draftNotes = (workspace.history ?? []).filter(entry => entry.manual && entry.entityKind === kind && entry.entityId === id).map(entry => ({ id: entry.id, text: entry.newValue ?? '' }));
-    renderNotes();
-}
-function renderNotes(): void {
-    noteContainer.innerHTML = draftNotes.map((note, index) => `<div class="criterion-row"><label class="criterion-text"><span class="sr-only">Meldung ${index + 1}</span><textarea required maxlength="10000" data-note-text="${index}">${escapeHtml(note.text)}</textarea></label>${draftNoteKind === 'project' || note.id === null ? `<button type="button" class="button compact" data-remove-note="${index}" aria-label="Meldung ${index + 1} entfernen">−</button>` : ''}</div>`).join('');
-}
-for (const [container, button] of [['#entry-notes', '#add-entry-note'], ['#release-notes', '#add-release-note']]) {
-    document.querySelector(button)!.addEventListener('click', () => {
-        draftNotes.push({ id: null, text: '' });
-        renderNotes();
-    });
-    const element = document.querySelector<HTMLElement>(container)!;
-    element.addEventListener('input', event => {
-        if (!(event.target instanceof HTMLTextAreaElement) || event.target.dataset.noteText === undefined)
-            return;
-        const note = draftNotes[Number(event.target.dataset.noteText)];
-        if (note)
-            note.text = event.target.value;
-    });
-    element.addEventListener('click', event => {
-        if (!(event.target instanceof Element))
-            return;
-        const button = event.target.closest<HTMLButtonElement>('[data-remove-note]');
-        if (button) {
-            draftNotes.splice(Number(button.dataset.removeNote), 1);
-            renderNotes();
-        }
-    });
-}
 const releaseStatusNames: Record<ReleaseStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', published: 'Veröffentlicht' };
 const statusNames: Record<TaskStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', done: 'Erledigt' };
 function errorMessage(error: unknown): string {
@@ -346,159 +256,6 @@ function releasePanel(project: Project): string {
         return `<li class="release-row"><div class="release-heading"><button type="button" class="release-open" data-action="show-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} öffnen"><strong>${escapeHtml(release.version)}</strong> <span class="muted">${releaseStatusNames[release.status]}</span>${release.dueDate ? `<span class="release-due">Fällig am ${escapeHtml(release.dueDate.split('-').reverse().join('.'))}</span>` : ''}</button><div class="release-actions"><button type="button" class="button compact" data-action="edit-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} bearbeiten" title="Release bearbeiten">B</button>${release.published ? '' : `<button type="button" class="button compact" data-action="publish-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} veröffentlichen">Veröffentlichen</button>`}</div></div>${([["task", "Aufgaben"], ["feature", "Features"], ["fix", "Fixes"]] as const).map(([kind, label]) => `<section><h3>${label}</h3><ul class="detail-list">${items.filter(item => item.kind === kind).map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') || '<li class="muted">Keine</li>'}</ul></section>`).join('')}</li>`;
     }).join('')}</ul>` : emptyState('Noch keine Releases', 'Plane eine Version für dieses Softwareprojekt.', addButton('new-release', 'Release anlegen', 'secondary'))}</section>`;
 }
-function updateReleaseOptions(show: boolean, selectedId: number | null): void {
-    const projectId = projectField.value ? Number(projectField.value) : null;
-    show = show && workspace.projects.some(project => project.id === projectId && project.kind === 'software');
-    document.querySelector<HTMLElement>('#release-assignment-field')!.hidden = !show;
-    const selected = workspace.releases.find(item => item.id === selectedId && item.projectId === projectId);
-    const planned = workspace.releases.filter(item => item.projectId === projectId && !item.published);
-    editorPublishedReleaseId = show && selected?.published ? selected.id : null;
-    targetVersionField.replaceChildren(new Option('Keine Zielversion', ''), ...(editorPublishedReleaseId ? [new Option('Veröffentlichte Zuordnung beibehalten', 'keep-published')] : []), ...planned.map(item => new Option(item.version, String(item.id))));
-    targetVersionField.value = editorPublishedReleaseId ? 'keep-published' : selected && !selected.published ? String(selected.id) : '';
-    publishedVersion.hidden = !editorPublishedReleaseId;
-    publishedVersion.textContent = editorPublishedReleaseId ? `Aktuelles Release: ${selected!.version} (veröffentlicht)` : '';
-}
-function openReleaseDialog(id: number | null = null): void {
-    if (typeof view !== 'number' || workspace.projects.find(project => project.id === view)?.kind !== 'software')
-        return;
-    const release = id === null ? undefined : workspace.releases.find(item => item.id === id && item.projectId === view);
-    if (id !== null && !release)
-        return;
-    editingReleaseId = id;
-    openNotes('release', id, '#release-notes');
-    releaseTitle.textContent = release ? 'Release bearbeiten' : 'Neues Release';
-    releaseVersion.value = release?.version ?? '';
-    releaseDue.value = release?.dueDate ?? '';
-    document.querySelector<HTMLElement>('#release-status-field')!.hidden = !release;
-    releaseStatus.value = release?.status ?? 'planned';
-    saveRelease.textContent = release ? 'Speichern' : 'Release anlegen';
-    document.querySelector<HTMLElement>('#delete-release-entry')!.hidden = !release;
-    releaseError.hidden = true;
-    releaseDialog.showModal();
-    releaseVersion.focus();
-}
-document.querySelector('#delete-release-entry')!.addEventListener('click', () => {
-    if (!saving && editingReleaseId !== null)
-        openDeleteReleaseDialog(editingReleaseId);
-});
-for (const id of ['close-release', 'cancel-release'])
-    document.querySelector(`#${id}`)!.addEventListener('click', () => {
-        if (!saving)
-            releaseDialog.close();
-    });
-releaseDialog.addEventListener('cancel', event => {
-    if (saving)
-        event.preventDefault();
-});
-releaseForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (saving || typeof view !== 'number')
-        return;
-    const id = editingReleaseId;
-    saving = true;
-    saveRelease.disabled = true;
-    releaseError.hidden = true;
-    try {
-        workspace = id === null ? await window.hq.createRelease(view, releaseVersion.value, releaseDue.value || null, workspace.revision, draftNotes) : await window.hq.renameRelease(id, releaseVersion.value, releaseDue.value || null, releaseStatus.value as ReleaseStatus, workspace.revision, draftNotes);
-        releaseDialog.close();
-        render();
-        announce(id === null ? 'Release angelegt.' : 'Release gespeichert.');
-    }
-    catch (error) {
-        releaseError.textContent = errorMessage(error);
-        releaseError.hidden = false;
-    }
-    finally {
-        saving = false;
-        saveRelease.disabled = false;
-    }
-});
-function openPublishDialog(id: number): void {
-    const release = workspace.releases.find(item => item.id === id && !item.published);
-    if (!release)
-        return;
-    pendingReleaseId = id;
-    const open = workspace.tasks.filter(item => item.releaseId === id && item.status !== 'done');
-    publishDescription.textContent = open.length ? `Diese Einträge blockieren die Veröffentlichung: ${open.map(item => `${item.kind === 'task' ? 'Aufgabe' : item.kind === 'fix' ? 'Fix' : 'Feature'}: ${item.title} (${statusNames[item.status]})`).join('; ')}.` : `„${release.version}“ wird als veröffentlicht markiert und steht nicht mehr für neue Zuordnungen zur Verfügung.`;
-    publishError.hidden = true;
-    publishDialog.showModal();
-    document.querySelector<HTMLButtonElement>('#cancel-publish')!.focus();
-}
-document.querySelector('#cancel-publish')!.addEventListener('click', () => {
-    if (!saving)
-        publishDialog.close();
-});
-publishDialog.addEventListener('cancel', event => {
-    if (saving)
-        event.preventDefault();
-});
-confirmPublish.addEventListener('click', async () => {
-    if (saving || pendingReleaseId === null)
-        return;
-    saving = true;
-    confirmPublish.disabled = true;
-    publishError.hidden = true;
-    try {
-        workspace = await window.hq.publishRelease(pendingReleaseId, workspace.revision);
-        publishDialog.close();
-        pendingReleaseId = null;
-        render();
-        announce('Release veröffentlicht.');
-    }
-    catch (error) {
-        publishError.textContent = errorMessage(error);
-        publishError.hidden = false;
-    }
-    finally {
-        saving = false;
-        confirmPublish.disabled = false;
-    }
-});
-function openDeleteReleaseDialog(id: number): void {
-    const release = workspace.releases.find(item => item.id === id);
-    if (!release)
-        return;
-    pendingDeleteReleaseId = id;
-    deleteReleaseDescription.textContent = `„${release.version}“ wird endgültig gelöscht. Zugeordnete Aufgaben, Features und Fixes bleiben erhalten, ihre Release-Zuordnung wird entfernt.`;
-    deleteReleaseError.hidden = true;
-    deleteReleaseDialog.showModal();
-    cancelDeleteRelease.focus();
-}
-cancelDeleteRelease.addEventListener('click', () => {
-    if (!saving)
-        deleteReleaseDialog.close();
-});
-deleteReleaseDialog.addEventListener('cancel', event => {
-    if (saving)
-        event.preventDefault();
-});
-confirmDeleteRelease.addEventListener('click', async () => {
-    if (saving || pendingDeleteReleaseId === null)
-        return;
-    saving = true;
-    confirmDeleteRelease.disabled = true;
-    cancelDeleteRelease.disabled = true;
-    deleteReleaseError.hidden = true;
-    try {
-        workspace = await window.hq.deleteRelease(pendingDeleteReleaseId, workspace.revision);
-        pendingDeleteReleaseId = null;
-        selectedReleaseId = null;
-        deleteReleaseDialog.close();
-        releaseDialog.close();
-        render();
-        content.querySelector('h1')?.focus({ preventScroll: true });
-        announce('Release gelöscht.');
-    }
-    catch (error) {
-        deleteReleaseError.textContent = errorMessage(error);
-        deleteReleaseError.hidden = false;
-    }
-    finally {
-        saving = false;
-        confirmDeleteRelease.disabled = false;
-        cancelDeleteRelease.disabled = false;
-    }
-});
 function projectRow(project: Project): string {
     const tasks = workspace.tasks.filter(task => task.projectId === project.id);
     const open = tasks.filter(task => !task.completed).length;
@@ -591,57 +348,6 @@ function renderDetails(): void {
     ${historyPanel('task', task.id)}
     </div>`;
 }
-function openDeleteDialog(id: number): void {
-    const task = workspace.tasks.find(item => item.id === id);
-    if (!task)
-        return;
-    pendingDeleteTaskId = id;
-    const kind = task.kind === 'feature' ? 'Feature' : task.kind === 'fix' ? 'Fix' : 'Aufgabe';
-    deleteTitle.textContent = `${kind} löschen?`;
-    deleteDescription.textContent = `„${task.title}“ wird endgültig gelöscht. Unteraufgaben${task.kind !== 'task' ? ', Akzeptanzkriterien' : ''} und Verknüpfungen werden entfernt. Verknüpfte Einträge bleiben erhalten.`;
-    deleteError.hidden = true;
-    deleteDialog.showModal();
-    cancelDelete.focus();
-}
-cancelDelete.addEventListener('click', () => {
-    if (!saving)
-        deleteDialog.close();
-});
-deleteDialog.addEventListener('cancel', event => {
-    if (saving)
-        event.preventDefault();
-});
-confirmDelete.addEventListener('click', async () => {
-    if (saving || pendingDeleteTaskId === null)
-        return;
-    const task = workspace.tasks.find(item => item.id === pendingDeleteTaskId);
-    if (!task)
-        return;
-    saving = true;
-    confirmDelete.disabled = true;
-    cancelDelete.disabled = true;
-    deleteError.hidden = true;
-    try {
-        workspace = await window.hq.deleteTask(task.id, workspace.revision);
-        if (selectedTaskId === task.id)
-            selectedTaskId = null;
-        pendingDeleteTaskId = null;
-        deleteDialog.close();
-        editor.close();
-        render();
-        content.querySelector('h1')?.focus({ preventScroll: true });
-        announce(task.kind === 'feature' ? 'Feature gelöscht.' : task.kind === 'fix' ? 'Fix gelöscht.' : 'Aufgabe gelöscht.');
-    }
-    catch (error) {
-        deleteError.textContent = errorMessage(error);
-        deleteError.hidden = false;
-    }
-    finally {
-        saving = false;
-        confirmDelete.disabled = false;
-        cancelDelete.disabled = false;
-    }
-});
 function showView(target: View): void {
     view = target;
     activeTab = 'task';
@@ -660,174 +366,34 @@ function announce(message: string, error = false): void {
         notice.hidden = true;
     }, 4500);
 }
-function openEditor(mode: EditorMode): void {
-    editing = mode;
-    openNotes(mode.kind, mode.id, '#entry-notes');
-    const isTask = mode.kind === 'task';
-    const task = isTask ? workspace.tasks.find(item => item.id === mode.id) : undefined;
-    const entry = isTask ? task : workspace.projects.find(item => item.id === mode.id);
-    const currentProject = task ? task.projectId : (typeof view === 'number' ? view : null);
-    editorTaskKind = task?.kind ?? (isTask && activeTab !== 'releases' && activeTab !== 'history' ? activeTab : 'task');
-    const isFeature = isTask && editorTaskKind !== 'task';
-    const isFix = isTask && editorTaskKind === 'fix';
-    document.querySelector<HTMLElement>('#project-kind-field')!.hidden = isTask;
-    document.querySelector<HTMLElement>('#project-due-field')!.hidden = isTask;
-    projectDueField.value = !isTask ? ((entry as Project | undefined)?.dueDate ?? '') : '';
-    renderProjectDueConflicts();
-    document.querySelector<HTMLElement>('#feature-fields')!.hidden = !isFeature;
-    document.querySelector('#description-label')!.textContent = isFeature ? 'Beschreibung und Nutzen' : 'Beschreibung';
-    draftCriteria = isFeature ? (task?.criteria ?? []).map(criterion => ({ ...criterion })) : [];
-    renderCriteriaEditor();
-    draftSubtasks = task ? workspace.subtasks.filter(subtask => subtask.taskId === task.id).map(({ id, title }) => ({ id, title })) : [];
-    renderSubtaskEditor();
-    projectKindField.value = !isTask ? ((entry as Project | undefined)?.kind ?? 'normal') : 'normal';
-    document.querySelector('#editor-label')!.textContent = isFix ? 'Fix' : isFeature ? 'Feature' : isTask ? 'Aufgabe' : 'Projekt';
-    document.querySelector('#editor-title')!.textContent = isTask
-        ? (isFix ? (entry ? 'Fix bearbeiten' : 'Neuer Fix') : isFeature ? (entry ? 'Feature bearbeiten' : 'Neues Feature') : (entry ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'))
-        : (entry ? 'Projekt bearbeiten' : 'Neues Projekt');
-    document.querySelector<HTMLElement>('#project-field')!.hidden = !isTask;
-    titleField.value = entry?.title ?? '';
-    titleField.placeholder = isFix ? 'Was soll behoben oder geändert werden?' : isFeature ? 'Welche Funktion soll hinzukommen?' : isTask ? 'Was steht an?' : 'Wie heißt dein Vorhaben?';
-    priorityField.value = entry?.priority ?? 'normal';
-    descriptionField.value = entry?.description ?? '';
-    document.querySelector<HTMLElement>('#task-fields')!.hidden = !isTask;
-    dueField.value = task?.dueDate ?? '';
-    statusField.value = task?.status ?? 'planned';
-    selectedPredecessors = new Set(task?.predecessorIds ?? []);
-    renderSelectedPredecessors();
-    projectField.replaceChildren(...(isFeature ? [] : [new Option('Posteingang', '')]), ...workspace.projects.filter(project => !isFeature || project.kind === 'software').map(project => new Option(project.title, String(project.id))));
-    projectField.value = currentProject === null ? '' : String(currentProject);
-    updateReleaseOptions(isTask, task?.releaseId ?? null);
-    saveButton.textContent = entry ? 'Speichern' : '+';
-    saveButton.setAttribute('aria-label', entry ? 'Speichern' : (isFix ? 'Fix anlegen' : isFeature ? 'Feature anlegen' : isTask ? 'Aufgabe anlegen' : 'Projekt anlegen'));
-    saveButton.title = entry ? 'Speichern' : (isFix ? 'Fix anlegen' : isFeature ? 'Feature anlegen' : isTask ? 'Aufgabe anlegen' : 'Projekt anlegen');
-    document.querySelector<HTMLElement>('#delete-entry')!.hidden = !task;
-    editorError.hidden = true;
-    editor.showModal();
-    titleField.focus();
+interface DialogContext {
+    workspace: Workspace;
+    readonly view: View;
+    saving: boolean;
+    render(): void;
+    announce(message: string, error?: boolean): void;
+    focusHeading(): void;
 }
-document.querySelector('#delete-entry')!.addEventListener('click', () => {
-    if (!saving && editing?.kind === 'task' && editing.id !== null)
-        openDeleteDialog(editing.id);
-});
-function projectDueConflicts(): Task[] {
-    if (!editing || editing.kind !== 'project' || editing.id === null || !projectDueField.value)
-        return [];
-    const deadline = projectDueField.value;
-    return workspace.tasks.filter(task => task.projectId === editing!.id && task.dueDate !== null && task.dueDate > deadline)
-        .sort((a, b) => a.dueDate!.localeCompare(b.dueDate!) || a.id - b.id);
-}
-function renderProjectDueConflicts(): void {
-    const conflicts = projectDueConflicts();
-    projectDueConflictBox.hidden = conflicts.length === 0;
-    projectDueConflictBox.innerHTML = conflicts.length ? `<p>Diese Einträge sind nach der Projektfrist fällig. Schließe den Dialog und passe ihre Fälligkeiten an:</p><ul>${conflicts.map(task => `<li>${task.kind === 'feature' ? 'Feature' : task.kind === 'fix' ? 'Fix' : 'Aufgabe'}: ${escapeHtml(task.title)} · ${escapeHtml(task.dueDate!.split('-').reverse().join('.'))}</li>`).join('')}</ul>` : '';
-}
-projectDueField.addEventListener('input', renderProjectDueConflicts);
-projectDueField.addEventListener('change', renderProjectDueConflicts);
-projectField.addEventListener('change', () => {
-    updateReleaseOptions(editing?.kind === 'task', null);
-});
-function renderCriteriaEditor(): void {
-    criteriaField.innerHTML = draftCriteria.map((criterion, index) => `<div class="criterion-row"><label class="criterion-check"><input type="checkbox" data-criterion-check="${index}" ${criterion.completed ? 'checked' : ''} aria-label="Kriterium ${index + 1} erfüllt"></label><label class="criterion-text"><span class="sr-only">Akzeptanzkriterium ${index + 1}</span><input type="text" required maxlength="1000" data-criterion-text="${index}" value="${escapeHtml(criterion.text)}" placeholder="Prüfbares Kriterium"></label><button type="button" class="button compact" data-remove-criterion="${index}" aria-label="Kriterium ${index + 1} entfernen">−</button></div>`).join('');
-}
-const subtaskField = document.querySelector<HTMLElement>('#entry-subtasks')!;
-function renderSubtaskEditor(): void {
-    subtaskField.innerHTML = draftSubtasks.map((subtask, index) => `<div class="criterion-row"><label class="criterion-text"><span class="sr-only">Unteraufgabe ${index + 1}</span><input type="text" required maxlength="120" data-subtask-text="${index}" value="${escapeHtml(subtask.title)}" placeholder="Unteraufgabe"></label><button type="button" class="button compact" data-remove-subtask="${index}" aria-label="Unteraufgabe ${index + 1} entfernen">−</button></div>`).join('');
-}
-document.querySelector<HTMLButtonElement>('#add-subtask')!.addEventListener('click', () => {
-    draftSubtasks.push({ id: null, title: '' });
-    renderSubtaskEditor();
-    subtaskField.querySelector<HTMLInputElement>(`[data-subtask-text="${draftSubtasks.length - 1}"]`)?.focus();
-});
-subtaskField.addEventListener('input', event => {
-    if (!(event.target instanceof HTMLInputElement) || event.target.dataset.subtaskText === undefined)
-        return;
-    const subtask = draftSubtasks[Number(event.target.dataset.subtaskText)];
-    if (subtask)
-        subtask.title = event.target.value;
-});
-subtaskField.addEventListener('click', event => {
-    if (!(event.target instanceof Element))
-        return;
-    const button = event.target.closest<HTMLButtonElement>('[data-remove-subtask]');
-    if (button) {
-        draftSubtasks.splice(Number(button.dataset.removeSubtask), 1);
-        renderSubtaskEditor();
-    }
-});
-document.querySelector<HTMLButtonElement>('#add-criterion')!.addEventListener('click', () => {
-    draftCriteria.push({ id: null, text: '', completed: false });
-    renderCriteriaEditor();
-    criteriaField.querySelector<HTMLInputElement>(`[data-criterion-text="${draftCriteria.length - 1}"]`)?.focus();
-});
-criteriaField.addEventListener('input', event => {
-    if (!(event.target instanceof HTMLInputElement) || event.target.dataset.criterionText === undefined)
-        return;
-    const criterion = draftCriteria[Number(event.target.dataset.criterionText)];
-    if (criterion)
-        criterion.text = event.target.value;
-});
-criteriaField.addEventListener('change', event => {
-    if (!(event.target instanceof HTMLInputElement) || event.target.dataset.criterionCheck === undefined)
-        return;
-    const criterion = draftCriteria[Number(event.target.dataset.criterionCheck)];
-    if (criterion)
-        criterion.completed = event.target.checked;
-});
-criteriaField.addEventListener('click', event => {
-    if (!(event.target instanceof Element))
-        return;
-    const button = event.target.closest<HTMLButtonElement>('[data-remove-criterion]');
-    if (button) {
-        draftCriteria.splice(Number(button.dataset.removeCriterion), 1);
-        renderCriteriaEditor();
-    }
-});
-function renderSelectedPredecessors(): void {
-    const selected = workspace.tasks.filter(task => selectedPredecessors.has(task.id));
-    predecessorField.innerHTML = selected.length ? selected.map(task => {
-        const project = workspace.projects.find(item => item.id === task.projectId);
-        return `<div class="selected-predecessor"><span>${escapeHtml(task.title)} <span class="muted">· ${escapeHtml(project?.title ?? 'Posteingang')}</span></span><button type="button" class="button compact" data-remove-predecessor="${task.id}" aria-label="${escapeHtml(task.title)} als Vorgänger entfernen">−</button></div>`;
-    }).join('') : '';
-}
-function updatePredecessorTasks(): void {
-    const selectedProject = predecessorProject.value;
-    const available = selectedProject === '' ? [] : workspace.tasks.filter(task => task.id !== editing?.id && !selectedPredecessors.has(task.id) &&
-        (selectedProject === 'inbox' ? task.projectId === null : task.projectId === Number(selectedProject)));
-    predecessorTask.replaceChildren(new Option('Aufgabe auswählen', ''), ...available.map(task => new Option(task.title, String(task.id))));
-    predecessorTask.disabled = selectedProject === '' || available.length === 0;
-    predecessorEmpty.hidden = selectedProject === '' || available.length > 0;
-    confirmPredecessor.disabled = true;
-}
-document.querySelector<HTMLButtonElement>('#add-predecessor')!.addEventListener('click', () => {
-    predecessorProject.replaceChildren(new Option('Projekt auswählen', ''), new Option('Posteingang', 'inbox'), ...workspace.projects.map(project => new Option(project.title, String(project.id))));
-    updatePredecessorTasks();
-    predecessorDialog.showModal();
-    predecessorProject.focus();
-});
-predecessorProject.addEventListener('change', updatePredecessorTasks);
-predecessorTask.addEventListener('change', () => {
-    confirmPredecessor.disabled = !predecessorTask.value;
-});
-for (const id of ['close-predecessor', 'cancel-predecessor'])
-    document.querySelector(`#${id}`)!.addEventListener('click', () => predecessorDialog.close());
-predecessorField.addEventListener('click', event => {
-    if (!(event.target instanceof Element))
-        return;
-    const button = event.target.closest<HTMLButtonElement>('[data-remove-predecessor]');
-    if (button) {
-        selectedPredecessors.delete(Number(button.dataset.removePredecessor));
-        renderSelectedPredecessors();
-    }
-});
-document.querySelector<HTMLFormElement>('#predecessor-form')!.addEventListener('submit', event => {
-    event.preventDefault();
-    if (!predecessorTask.value)
-        return;
-    selectedPredecessors.add(Number(predecessorTask.value));
-    renderSelectedPredecessors();
-    predecessorDialog.close();
-});
+
+const dialogContext = {
+    get workspace() { return workspace; },
+    set workspace(value: Workspace) { workspace = value; },
+    get view() { return view; },
+    get activeTab() { return activeTab; },
+    get saving() { return saving; },
+    set saving(value: boolean) { saving = value; },
+    get selectedTaskId() { return selectedTaskId; },
+    set selectedTaskId(value: number | null) { selectedTaskId = value; },
+    get selectedReleaseId() { return selectedReleaseId; },
+    set selectedReleaseId(value: number | null) { selectedReleaseId = value; },
+    showView,
+    render,
+    announce,
+    focusHeading() { content.querySelector('h1')?.focus({ preventScroll: true }); },
+};
+const entryEditor = createEntryEditor(dialogContext);
+const releaseEditor = createReleaseEditor(dialogContext);
+
 document.addEventListener('click', event => {
     if (!(event.target instanceof Element))
         return;
@@ -879,13 +445,13 @@ document.addEventListener('click', event => {
             renderDetails();
             break;
         case 'new-release':
-            openReleaseDialog();
+            releaseEditor.open();
             break;
         case 'edit-release':
-            openReleaseDialog(Number(target.dataset.id));
+            releaseEditor.open(Number(target.dataset.id));
             break;
         case 'publish-release':
-            openPublishDialog(Number(target.dataset.id));
+            releaseEditor.openPublish(Number(target.dataset.id));
             break;
         case 'tab-fix':
             activeTab = 'fix';
@@ -904,16 +470,16 @@ document.addEventListener('click', event => {
             renderDetails();
             break;
         case 'new-task':
-            openEditor({ kind: 'task', id: null });
+            entryEditor.open({ kind: 'task', id: null });
             break;
         case 'edit-task':
-            openEditor({ kind: 'task', id: Number(target.dataset.id) });
+            entryEditor.open({ kind: 'task', id: Number(target.dataset.id) });
             break;
         case 'new-project':
-            openEditor({ kind: 'project', id: null });
+            entryEditor.open({ kind: 'project', id: null });
             break;
         case 'edit-project':
-            openEditor({ kind: 'project', id: Number(target.dataset.id) });
+            entryEditor.open({ kind: 'project', id: Number(target.dataset.id) });
             break;
     }
 });
@@ -988,86 +554,6 @@ document.addEventListener('change', async (event) => {
     finally {
         checkbox.disabled = false;
         saving = false;
-    }
-});
-for (const id of ['close-editor', 'cancel-editor']) {
-    document.querySelector(`#${id}`)!.addEventListener('click', () => {
-        if (!saving) {
-            editing = null;
-            editor.close();
-        }
-    });
-}
-editor.addEventListener('cancel', event => {
-    if (saving)
-        event.preventDefault();
-    else
-        editing = null;
-});
-form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!editor.open || !editing || saving)
-        return;
-    const title = titleField.value.trim();
-    if (!title) {
-        editorError.textContent = 'Gib einen Namen ein.';
-        editorError.hidden = false;
-        titleField.focus();
-        return;
-    }
-    if (editing.kind === 'project' && projectDueConflicts().length) {
-        renderProjectDueConflicts();
-        editorError.textContent = 'Passe zuerst die Fälligkeiten der aufgeführten Einträge an.';
-        editorError.hidden = false;
-        projectDueField.focus();
-        return;
-    }
-    const fields = { title, priority: priorityField.value as Priority, description: descriptionField.value };
-    const mode = editing;
-    const projectId = projectField.value ? Number(projectField.value) : null;
-    saving = true;
-    editorFields.disabled = true;
-    saveButton.disabled = true;
-    editorError.hidden = true;
-    try {
-        if (mode.kind === 'project') {
-            const previousIds = new Set(workspace.projects.map(project => project.id));
-            workspace = await window.hq.saveProject(mode.id, { ...fields, kind: projectKindField.value as ProjectKind, dueDate: projectDueField.value || null }, workspace.revision, draftNotes);
-            editing = null;
-            editor.close();
-            const newProject = workspace.projects.find(project => !previousIds.has(project.id));
-            showView(newProject?.id ?? view);
-            announce(mode.id === null ? 'Projekt angelegt.' : 'Projekt gespeichert.');
-        }
-        else {
-            workspace = await window.hq.saveTask(mode.id, {
-                ...fields,
-                kind: editorTaskKind,
-                featureId: null,
-                releaseId: targetVersionField.value === 'keep-published' ? editorPublishedReleaseId : targetVersionField.value ? Number(targetVersionField.value) : null,
-                criteria: editorTaskKind !== 'task' ? draftCriteria : [],
-                subtasks: draftSubtasks,
-                projectId,
-                dueDate: dueField.value || null,
-                status: statusField.value as TaskStatus,
-                predecessorIds: [...selectedPredecessors]
-            }, workspace.revision, draftNotes);
-            editing = null;
-            editor.close();
-            render();
-            content.querySelector('h1')?.focus({ preventScroll: true });
-            const moved = (view === 'inbox' ? projectId !== null : projectId !== view);
-            announce(mode.id === null ? (editorTaskKind === 'feature' ? 'Feature angelegt.' : editorTaskKind === 'fix' ? 'Fix angelegt.' : 'Aufgabe angelegt.') : moved ? 'Eintrag verschoben.' : 'Eintrag gespeichert.');
-        }
-    }
-    catch (error) {
-        editorError.textContent = errorMessage(error);
-        editorError.hidden = false;
-    }
-    finally {
-        saving = false;
-        editorFields.disabled = false;
-        saveButton.disabled = false;
     }
 });
 void window.hq.read().then(data => {
