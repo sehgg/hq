@@ -27,8 +27,8 @@ test('CLI search, assignment, editing and completion rules share the database an
  const create=(...args)=>{const r=run('create','--project','App',...args); assert.equal(r.status,0,JSON.stringify(r.body));return r.body.data;};
  const blocker=create('--title','Vorarbeit');
  const feature=create('--title','Export','--kind','feature','--release',String(release),'--criteria',JSON.stringify([{id:null,text:'CSV vorhanden',completed:false}]));
- const task=create('--title','Export testen','--feature',String(feature.id),'--predecessors',String(blocker.id),'--due','2026-11-30','--description','Prüfen');
- assert.equal(task.featureId,feature.id); assert.equal(task.dueDate,'2026-11-30');
+ const task=create('--title','Export testen','--predecessors',String(blocker.id),'--due','2026-11-30','--description','Prüfen');
+ assert.equal(task.featureId,null); assert.equal(run('edit','--id',String(task.id),'--feature',String(feature.id)).status,2); assert.equal(task.dueDate,'2026-11-30');
  assert.equal(run('tasks','--project','App').body.data.some(x=>x.id===task.id),false);
  const found=run('tasks','--project','App','--title','export').body.data; assert.deepEqual(found.map(x=>x.id),[feature.id,task.id]);
  create('--title','Export testen');

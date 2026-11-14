@@ -9,7 +9,6 @@ const api: HqApi = {
   publishRelease: (id, revision) => ipcRenderer.invoke('release:publish', id, revision),
   saveProject: (id, fields, revision) => ipcRenderer.invoke('project:save', id, fields, revision),
   saveTask: (id, fields, revision) => ipcRenderer.invoke('task:save', id, fields, revision),
-  assignFeature: (taskId, featureId, revision) => ipcRenderer.invoke('task:assign-feature', taskId, featureId, revision),
   deleteTask: (id, revision) => ipcRenderer.invoke('task:delete', id, revision),
   completeTask: (id, completed, revision) => ipcRenderer.invoke('task:complete', id, completed, revision),
   addSubtask: (id, title, revision) => ipcRenderer.invoke('subtask:add', id, title, revision),

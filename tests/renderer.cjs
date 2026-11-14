@@ -25,7 +25,7 @@ function renderer(hq = { read: () => new Promise(() => {}) }) {
   class Option { constructor(text, value) { this.text = text; this.value = value; } }
   const context = { document, Option, Element, HTMLInputElement: Element, HTMLTextAreaElement:Element, HTMLSelectElement: Element, HTMLFormElement: Element, getComputedStyle: element => ({getPropertyValue: name => element.style.properties[name] ?? '226px'}), window: { hq, clearTimeout() {}, setTimeout() { return 0; }, addEventListener() {}, setInterval(callback) { tick=callback; } }, console };
   vm.createContext(context);
-  vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, orderTaskTree, openEditor, openDeleteDialog, openFeatureTaskDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = { releases: [], ...value }; }, getWorkspace: () => workspace, selected: () => [...selectedPredecessors] };`, context);
+  vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, openEditor, openDeleteDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = { releases: [], ...value }; }, getWorkspace: () => workspace, selected: () => [...selectedPredecessors] };`, context);
   const change = async target => { for (const handler of handlers.change ?? []) await handler({target}); };
   return { api: context.testApi, node: selector => document.querySelector(selector), click, change, tick: () => tick(), document };
 }
@@ -70,14 +70,14 @@ test('details divider resizes in the opposite direction and follows the details 
   assert.equal(handle.attributes['aria-valuemin'],'320'); api.selectTask(null); assert.equal(handle.hidden,true);
 });
 
-test('task rows expose every status and mark cross-project dependencies without changing the title', () => {
+test('task rows expose statuses without dependency markers', () => {
   const { api } = renderer();
   for (const [status, label] of [['planned','Geplant'], ['in_progress','In Arbeit'], ['paused','Pausiert'], ['done','Erledigt']]) {
     const row = api.taskRow(task(2, 'Nachfolger', 2, {status, predecessorIds:[1]}));
     assert.match(row, new RegExp(`task-status">${label}<`));
-    assert.match(row, /has-predecessor/); assert.match(row, /↳/); assert.match(row, /Nachfolger/);
+    assert.doesNotMatch(row, /↳|dependency-marker|task-indent/);
+    assert.match(row, /Nachfolger/);
   }
-  assert.doesNotMatch(api.taskRow(task(3, 'Ohne Vorgänger', null)), /dependency-marker/);
 });
 
 test('predecessor selection offers other projects and inbox, excludes current and selected tasks, and retains selection', () => {
@@ -103,52 +103,15 @@ test('predecessor selection offers other projects and inbox, excludes current an
   assert.deepEqual(node('#predecessor-task').children.map(option => option.text), ['Aufgabe auswählen','Schon gewählt']);
 });
 
-test('depth-first task overview keeps complete branches together and sorts only siblings by due date', () => {
+test('project and inbox lists show only their own entries in workspace order', () => {
   const { api } = renderer();
-  const tasks = [
-    task(5,'E',1,{dueDate:'2026-03-01',predecessorIds:[1]}),
-    task(3,'C',1,{dueDate:'2026-12-01',predecessorIds:[2]}),
-    task(2,'B',1,{dueDate:'2026-01-01',predecessorIds:[1]}),
-    task(1,'A',1,{dueDate:'2026-11-01'}),
-    task(6,'D',1,{dueDate:null}),
-  ];
-  api.setWorkspace({ projects:[{id:1,title:'P'}], tasks, subtasks:[] });
-  const result = Array.from(api.orderTaskTree(tasks), item => [item.task.title, item.depth]);
-  assert.deepEqual(result, [['A',0], ['B',1], ['C',2], ['E',1], ['D',0]]);
-  const html = api.taskPanel({id:1,title:'P'});
-  assert.deepEqual(Array.from(html.matchAll(/data-action="show-task" data-id="(\d+)"/g), m => Number(m[1])), [1,2,3,5,6]);
-  const cRow = html.match(/<li class="task-row"[^>]*>[\s\S]*?<\/li>/g).find(row => row.includes('data-action="show-task" data-id="3"'));
-  assert.equal((cRow.match(/class="task-indent"/g) ?? []).length, 2);
-});
-
-test('multi-parent tasks occur once and hidden-project predecessors remain marked and visible', () => {
-  const { api } = renderer();
-  const tasks = [task(1,'A',1,{dueDate:'2026-01-01'}), task(2,'B',1,{dueDate:'2026-02-01'}), task(3,'C',1,{predecessorIds:[2,1]}), task(4,'Extern',1,{predecessorIds:[99]})];
-  const result = Array.from(api.orderTaskTree(tasks), item => [item.task.title, item.depth]);
-  assert.deepEqual(result, [['A',0],['C',1],['B',0],['Extern',0]]);
-  assert.match(api.taskRow(tasks[3]), /dependency-marker/);
-  assert.equal(result.filter(item => item[0] === 'C').length, 1);
-});
-
-test('a direct link to an ancestor does not flatten a longer dependency chain', () => {
-  const { api } = renderer();
-  const tasks = [task(1, 'A', 1, {dueDate:'2026-01-01'}), task(2, 'B', 1, {dueDate:'2026-02-01', predecessorIds:[1]}), task(3, 'C', 1, {dueDate:'2026-03-01', predecessorIds:[1,2]})];
-  assert.deepEqual(Array.from(api.orderTaskTree(tasks), item => [item.task.title, item.depth]), [['A',0],['B',1],['C',2]]);
-});
-
-test('project and inbox overviews include complete cross-project chains with clear labels and local counts', () => {
-  const { api } = renderer();
-  const tasks = [task(1,'A',1,{dueDate:'2026-03-01'}),task(2,'B',2,{dueDate:'2026-01-01',predecessorIds:[1]}),task(3,'C',null,{dueDate:'2026-02-01',predecessorIds:[2]}),task(4,'Andere',2)];
-  api.setWorkspace({projects:[{id:1,title:'Projekt A'},{id:2,title:'Projekt B'}],tasks,subtasks:[]});
-  for (const project of [{id:1,title:'Projekt A'}, {id:2,title:'Projekt B'}, undefined]) {
+  const tasks = [task(2,'B',2,{predecessorIds:[1]}), task(1,'A',1), task(3,'C',null,{predecessorIds:[2]})];
+  api.setWorkspace({projects:[{id:1,title:'A'},{id:2,title:'B'}], tasks, subtasks:[]});
+  for (const [project,id] of [[{id:1},1], [{id:2},2], [undefined,3]]) {
     const html = api.taskPanel(project);
-    const ids = Array.from(html.matchAll(/data-action="show-task" data-id="(\d+)"/g), m => Number(m[1]));
-    if (project?.id === 2) assert.deepEqual(ids, [1,2,3,4]);
-    else assert.deepEqual(ids, [1,2,3]);
-    assert.match(html, /Projekt A|Projekt B/);
-    assert.match(html, /verknüpft/);
-    assert.match(html, /<dt>Offen<\/dt><dd class="accent-secondary">[12]<\/dd>/);
-    assert.doesNotMatch(html, /<dt>Erledigt<\/dt><dd class="accent-primary">-/);
+    assert.deepEqual(Array.from(html.matchAll(/data-action="show-task" data-id="(\d+)"/g), m => Number(m[1])), [id]);
+    for (const label of ['Titel','Status','Priorität','Fälligkeit']) assert.match(html, new RegExp(label));
+    assert.doesNotMatch(html, /Hohe Priorität|task-indent|dependency-marker|verknüpft/);
   }
 });
 
@@ -296,8 +259,9 @@ test('delete confirmation cancels safely and deletes a feature only after confir
   let deletions=0;
   const hq={read:()=>new Promise(()=>{}),deleteTask:async id=>{deletions++;db.deleteTask(id);return db.read();}};
   const {api,node} = renderer(hq); api.setWorkspace(db.read()); api.showView(project); api.setTab('feature'); api.selectTask(feature.id);
-  assert.match(node('#details').innerHTML,/aria-label="Feature löschen"/);
-  api.openDeleteDialog(feature.id);
+  assert.doesNotMatch(node('#details').innerHTML,/Feature löschen/);
+  api.openEditor({kind:'task',id:feature.id}); assert.equal(node('#delete-entry').hidden,false);
+  node('#delete-entry').dispatch('click');
   assert.equal(node('#delete-dialog').open,true); assert.match(node('#delete-description').textContent,/Akzeptanzkriterien/);
   node('#cancel-delete').dispatch('click'); assert.equal(node('#delete-dialog').open,false); assert.equal(deletions,0);
   api.openDeleteDialog(feature.id); await node('#confirm-delete').dispatchAsync('click');
@@ -306,59 +270,21 @@ test('delete confirmation cancels safely and deletes a feature only after confir
   db.close();
 });
 
-test('feature details create and assign tasks and reflect their independent status after restart', async t => {
-  const { mkdtempSync, rmSync }=require('node:fs'); const { join }=require('node:path'); const { tmpdir }=require('node:os');
-  const { PlannerDatabase }=require('../dist/database'); const dir=mkdtempSync(join(tmpdir(),'hq-membership-'));
-  t.after(()=>rmSync(dir,{recursive:true,force:true})); const path=join(dir,'hq.sqlite'); let db=new PlannerDatabase(path);
-  db.saveProject(null,{title:'Software',priority:'normal',description:'',kind:'software'});
-  const project=db.read().projects[0].id;
-  const base={priority:'normal',description:'',featureId:null,releaseId:null,criteria:[],projectId:project,dueDate:null,status:'planned',predecessorIds:[]};
-  db.saveTask(null,{...base,title:'Feature XY',kind:'feature'}); const feature=db.read().tasks.find(x=>x.kind==='feature').id;
-  db.saveTask(null,{...base,title:'Vorhanden',kind:'task'}); const existing=db.read().tasks.find(x=>x.title==='Vorhanden').id;
-  const hq={read:()=>new Promise(()=>{}),saveTask:async(id,fields)=>{db.saveTask(id,fields);return db.read();},assignFeature:async(id,fid)=>{db.assignFeature(id,fid);return db.read();},completeTask:async(id,done)=>{db.completeTask(id,done);return db.read();}};
-  const {api,node,change}=renderer(hq); api.setWorkspace(db.read()); api.showView(project); api.setTab('feature'); api.selectTask(feature);
-  assert.match(node('#details').innerHTML,/Zugehörige Aufgaben/); assert.match(node('#details').innerHTML,/data-action="add-feature-task"/);
-  api.openFeatureTaskDialog(); assert.equal(node('#feature-task-dialog').open,true);
-  assert.deepEqual(node('#existing-feature-task').children.map(option=>option.text),['Aufgabe auswählen','Vorhanden']);
-  node('#new-feature-task').dispatch('click'); assert.equal(node('#editor-label').textContent,'Aufgabe');
-  assert.equal(node('#entry-task-feature').value,String(feature));
-  node('#entry-title').value='Feature XY definieren'; node('#entry-priority').value='normal'; node('#entry-status').value='planned';
-  await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
-  let created=db.read().tasks.find(item=>item.title==='Feature XY definieren'); assert.equal(created.featureId,feature);
-  assert.match(node('#details').innerHTML,/Feature XY definieren · Geplant/);
-  api.openFeatureTaskDialog(); node('#existing-feature-task').value=String(existing); node('#existing-feature-task').dispatch('change');
-  await node('#assign-feature-task').dispatchAsync('click'); assert.equal(db.read().tasks.find(x=>x.id===existing).featureId,feature);
-  api.showView(project); assert.match(node('#content').innerHTML,/Feature XY definieren/);
-  const checkbox=node('#membership-checkbox'); checkbox.dataset.complete=String(created.id); checkbox.checked=true; await change(checkbox);
-  api.setTab('feature'); api.selectTask(feature); assert.match(node('#details').innerHTML,/Feature XY definieren · Erledigt/);
-  assert.equal(db.read().tasks.find(x=>x.id===feature).status,'planned');
-  db.close(); db=new PlannerDatabase(path); api.setWorkspace(db.read()); api.selectTask(feature);
-  assert.match(node('#details').innerHTML,/Feature XY definieren · Erledigt/);
-  api.selectTask(created.id); assert.match(node('#details').innerHTML,/Zugehöriges Feature/); assert.match(node('#details').innerHTML,/Feature XY/);
-  const selector=node('#membership-select'); selector.dataset.featureAssignment=String(created.id); selector.value=''; await change(selector);
-  assert.equal(db.read().tasks.find(x=>x.id===created.id).featureId,null);
-  db.close();
-});
-
-test('task details change feature assignment and editor clears it when project changes', async t => {
-  const { mkdtempSync,rmSync }=require('node:fs'); const { join }=require('node:path'); const { tmpdir }=require('node:os'); const {PlannerDatabase}=require('../dist/database');
-  const dir=mkdtempSync(join(tmpdir(),'hq-reassign-')); t.after(()=>rmSync(dir,{recursive:true,force:true})); const db=new PlannerDatabase(join(dir,'hq.sqlite'));
-  db.saveProject(null,{title:'A',kind:'software',priority:'normal',description:''}); db.saveProject(null,{title:'B',kind:'software',priority:'normal',description:''});
-  const a=db.read().projects.find(p=>p.title==='A').id,b=db.read().projects.find(p=>p.title==='B').id;
-  const base={priority:'normal',description:'',featureId:null,releaseId:null,criteria:[],projectId:a,dueDate:null,status:'planned',predecessorIds:[]};
-  db.saveTask(null,{...base,title:'F1',kind:'feature'}); db.saveTask(null,{...base,title:'F2',kind:'feature'});
-  const f1=db.read().tasks.find(x=>x.title==='F1').id, f2=db.read().tasks.find(x=>x.title==='F2').id;
-  db.saveTask(null,{...base,title:'Aufgabe',kind:'task',featureId:f1}); const id=db.read().tasks.find(x=>x.title==='Aufgabe').id;
-  const hq={read:()=>new Promise(()=>{}),assignFeature:async(task,feature)=>{db.assignFeature(task,feature);return db.read();}};
-  const {api,node,change}=renderer(hq); api.setWorkspace(db.read()); api.showView(a); api.selectTask(id);
-  assert.match(node('#details').innerHTML,/F1/);
-  const select=node('#feature-select'); select.dataset.featureAssignment=String(id); select.value=String(f2); await change(select);
-  assert.equal(db.read().tasks.find(x=>x.id===id).featureId,f2); assert.match(node('#details').innerHTML,/F2/);
-  api.openEditor({kind:'task',id}); assert.equal(node('#entry-task-feature').value,String(f2));
-  node('#entry-project').value=String(b); node('#entry-project').dispatch('change');
-  assert.equal(node('#entry-task-feature').value,'');
-  assert.deepEqual(node('#entry-task-feature').children.map(option=>option.text),['Kein Feature oder Fix']);
-  db.close();
+test('delete from a row editor targets that entry even with another selection', async () => {
+  const tasks = [task(1,'Selected',null), task(2,'Edited',null)];
+  let deleted;
+  const {api,node,click} = renderer({read:()=>new Promise(()=>{}), deleteTask:async id => {
+    deleted=id;
+    return {revision:1,projects:[],tasks:tasks.filter(item=>item.id!==id),subtasks:[],releases:[]};
+  }});
+  api.setWorkspace({revision:0,projects:[],tasks,subtasks:[]});
+  api.selectTask(1); click('edit-task',2);
+  assert.equal(node('#delete-entry').hidden,false);
+  node('#delete-entry').dispatch('click');
+  await node('#confirm-delete').dispatchAsync('click');
+  assert.equal(deleted,2);
+  assert.equal(node('#editor').open,false);
+  assert.match(node('#details').innerHTML,/Selected/);
 });
 
 test('fixes have their own tab and persist criteria, release and task assignment', async t => {
@@ -369,7 +295,7 @@ test('fixes have their own tab and persist criteria, release and task assignment
   db.createRelease(project,'v0.4.0'); db.createRelease(project,'v0.4.1');
   const releaseId=db.read().releases.find(r=>r.version==='v0.4.0').id, nextReleaseId=db.read().releases.find(r=>r.version==='v0.4.1').id;
   db.saveTask(null,{...base,kind:'feature',title:'Feature'}); db.saveTask(null,{...base,kind:'task',title:'Vorhandene Aufgabe'});
-  const hq={read:()=>new Promise(()=>{}),saveTask:async(id,fields)=>{db.saveTask(id,fields);return db.read();},assignFeature:async(id,fid)=>{db.assignFeature(id,fid);return db.read();},completeCriterion:async(id,value)=>{db.completeCriterion(id,value);return db.read();}};
+  const hq={read:()=>new Promise(()=>{}),saveTask:async(id,fields)=>{db.saveTask(id,fields);return db.read();},completeCriterion:async(id,value)=>{db.completeCriterion(id,value);return db.read();}};
   const {api,node,click,change}=renderer(hq); api.setWorkspace(db.read()); api.showView(project);
   assert.match(node('#content').innerHTML,/data-action="tab-fix"/); assert.match(node('#content').innerHTML,/Vorhandene Aufgabe/);
   click('tab-fix'); assert.match(node('#content').innerHTML,/Noch keine Fixes/); assert.doesNotMatch(node('#content').innerHTML,/Vorhandene Aufgabe/);
@@ -378,26 +304,19 @@ test('fixes have their own tab and persist criteria, release and task assignment
   node('#add-criterion').dispatch('click'); const input=node('#fix-criterion'); input.dataset.criterionText='0'; input.value='CSV lässt sich öffnen'; node('#entry-criteria').dispatch('input',{target:input});
   await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
   let fix=db.read().tasks.find(item=>item.kind==='fix'); assert.equal(fix.targetVersion,'v0.4.0'); assert.match(node('#content').innerHTML,/CSV reparieren/); assert.doesNotMatch(node('#content').innerHTML,/>Feature<\/span>/);
-  api.selectTask(fix.id); assert.match(node('#details').innerHTML,/Akzeptanzkriterien/); assert.match(node('#details').innerHTML,/Aufgabe zu Fix hinzufügen/);
+  api.selectTask(fix.id); assert.match(node('#details').innerHTML,/Akzeptanzkriterien/); assert.doesNotMatch(node('#details').innerHTML,/Zugehörige Aufgaben/);
   const checkbox=node('#fix-criterion-check'); checkbox.dataset.criterion=String(fix.criteria[0].id); checkbox.checked=true; await change(checkbox);
-  api.openFeatureTaskDialog(); const task=db.read().tasks.find(item=>item.title==='Vorhandene Aufgabe'); node('#existing-feature-task').value=String(task.id); node('#existing-feature-task').dispatch('change'); await node('#assign-feature-task').dispatchAsync('click');
-  assert.match(node('#details').innerHTML,/Vorhandene Aufgabe · Geplant/);
-  api.openFeatureTaskDialog(); node('#new-feature-task').dispatch('click');
-  assert.equal(node('#editor-label').textContent,'Aufgabe'); assert.equal(node('#entry-task-feature').value,String(fix.id));
-  node('#entry-title').value='Fix testen'; node('#entry-priority').value='normal'; node('#entry-status').value='planned';
-  await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
-  assert.equal(db.read().tasks.find(item=>item.title==='Fix testen').featureId,fix.id);
-  assert.match(node('#details').innerHTML,/Fix testen · Geplant/);
+  const task=db.read().tasks.find(item=>item.title==='Vorhandene Aufgabe');
   db.close(); db=new PlannerDatabase(path); api.setWorkspace(db.read()); api.showView(project); assert.match(node('#content').innerHTML,/Vorhandene Aufgabe/); assert.doesNotMatch(node('#content').innerHTML,/CSV reparieren/);
-  api.selectTask(task.id); assert.match(node('#details').innerHTML,/Zugehöriger Fix/); assert.match(node('#details').innerHTML,/CSV reparieren/);
+  api.selectTask(task.id); assert.doesNotMatch(node('#details').innerHTML,/Zugehöriger Fix/);
   click('tab-fix'); fix=db.read().tasks.find(item=>item.kind==='fix'); api.selectTask(fix.id);
-  assert.match(node('#details').innerHTML,/v0\.4\.0/); assert.match(node('#details').innerHTML,/Vorhandene Aufgabe/); assert.equal(fix.criteria[0].completed,true);
+  assert.match(node('#details').innerHTML,/v0\.4\.0/); assert.doesNotMatch(node('#details').innerHTML,/Zugehörige Aufgaben/); assert.equal(fix.criteria[0].completed,true);
   api.openEditor({kind:'task',id:fix.id}); assert.equal(node('#editor-title').textContent,'Fix bearbeiten'); assert.equal(node('#entry-description').value,'Trennzeichen korrigieren');
   node('#entry-description').value='Trennzeichen und Quotes korrigieren'; node('#entry-target-version').value=String(nextReleaseId);
   await node('#editor-form').dispatchAsync('submit',{preventDefault(){}});
   db.close(); db=new PlannerDatabase(path); api.setWorkspace(db.read());
   fix=db.read().tasks.find(item=>item.kind==='fix'); assert.equal(fix.description,'Trennzeichen und Quotes korrigieren'); assert.equal(fix.targetVersion,'v0.4.1');
-  assert.equal(fix.criteria[0].completed,true); assert.equal(db.read().tasks.find(item=>item.id===task.id).featureId,fix.id);
+  assert.equal(fix.criteria[0].completed,true); assert.equal(db.read().tasks.find(item=>item.id===task.id).featureId,null);
   for (const [tab, expected, forbidden] of [['tab-task','Vorhandene Aufgabe',['CSV reparieren','>Feature</span>']],['tab-feature','Feature',['Vorhandene Aufgabe','CSV reparieren']],['tab-fix','CSV reparieren',['Vorhandene Aufgabe','>Feature</span>']]]) {
     click(tab); const contents=node('#content').innerHTML; assert.match(contents,new RegExp(expected));
     for (const text of forbidden) assert.equal(contents.includes(text),false);
@@ -466,12 +385,12 @@ test('release details open from the overview and deletion requires confirmation'
   const feature=db.read().tasks.find(item=>item.title==='Feature A'); click('show-task',feature.id);
   assert.match(node('#details').innerHTML,/<h2>Feature A<\/h2>/); assert.doesNotMatch(node('#details').innerHTML,/aria-label="Release bearbeiten"/);
   click('close-details'); assert.equal(node('#details').hidden,true); click('show-release',release);
-  assert.match(node('#details').innerHTML,/<h2>v1<\/h2>/);
+  assert.match(node('#details').innerHTML,/<h2>v1<\/h2>/); assert.doesNotMatch(node('#details').innerHTML,/Release löschen/);
   click('edit-release',release); assert.equal(node('#release-dialog').open,true); assert.equal(node('#release-version').value,'v1');
   node('#release-version').value='v1.1'; await node('#release-form').dispatchAsync('submit',{preventDefault(){}}); assert.match(node('#details').innerHTML,/<h2>v1\.1<\/h2>/);
-  click('delete-release',release); assert.equal(node('#delete-release-dialog').open,true); assert.match(node('#delete-release-description').textContent,/bleiben erhalten/);
+  click('edit-release',release); assert.equal(node('#delete-release-entry').hidden,false); node('#delete-release-entry').dispatch('click'); assert.equal(node('#delete-release-dialog').open,true); assert.match(node('#delete-release-description').textContent,/bleiben erhalten/);
   node('#cancel-delete-release').dispatch('click'); assert.equal(deletes,0); assert.equal(db.read().releases.length,1);
-  click('delete-release',release); await node('#confirm-delete-release').dispatchAsync('click');
+  node('#delete-release-entry').dispatch('click'); await node('#confirm-delete-release').dispatchAsync('click');
   assert.equal(deletes,1); assert.equal(node('#details').hidden,true); assert.match(node('#content').innerHTML,/Noch keine Releases/);
   db.close(); db=new PlannerDatabase(path); const w=db.read(); assert.equal(w.releases.length,0); assert.equal(w.tasks.length,2); assert.equal(w.tasks.every(task=>task.releaseId===null),true); db.close();
 });

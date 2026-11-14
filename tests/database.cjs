@@ -240,53 +240,7 @@ test('deleting tasks and features removes only their own data and dependency lin
   db.close();
 });
 
-test('feature membership is persistent, project-scoped and independent of status and dependencies', t => {
-  const file=tempDatabase(t); let db=new PlannerDatabase(file);
-  db.saveProject(null,{title:'App A',kind:'software',priority:'normal',description:''});
-  db.saveProject(null,{title:'App B',kind:'software',priority:'normal',description:''});
-  const a=db.read().projects.find(p=>p.title==='App A').id, b=db.read().projects.find(p=>p.title==='App B').id;
-  db.saveTask(null,fields('Feature XY',{kind:'feature',projectId:a}));
-  db.saveTask(null,fields('Anderes Feature',{kind:'feature',projectId:b}));
-  const feature=find(db,'Feature XY').id, other=find(db,'Anderes Feature').id;
-  db.saveTask(null,fields('Feature XY definieren',{projectId:a,featureId:feature}));
-  const task=find(db,'Feature XY definieren').id;
-  db.saveTask(null,fields('Vorhandene Aufgabe',{projectId:a}));
-  const existing=find(db,'Vorhandene Aufgabe').id;
-  db.assignFeature(existing,feature);
-  assert.throws(()=>db.assignFeature(task,other),/selben Softwareprojekt/);
-  assert.throws(()=>db.assignFeature(feature,feature),/Aufgabe/);
-  assert.throws(()=>db.saveTask(task,fields('Feature XY definieren',{projectId:b,featureId:feature})),/selben Softwareprojekt/);
-  assert.throws(()=>db.saveTask(feature,fields('Feature XY',{kind:'feature',projectId:b})),/Zuordnung/);
-  db.completeTask(task,true);
-  assert.equal(find(db,'Feature XY').status,'planned');
-  assert.deepEqual(find(db,'Feature XY definieren').predecessorIds,[]);
-  db.close(); db=new PlannerDatabase(file);
-  assert.equal(find(db,'Feature XY definieren').featureId,feature);
-  assert.equal(find(db,'Vorhandene Aufgabe').featureId,feature);
-  db.assignFeature(existing,null); assert.equal(find(db,'Vorhandene Aufgabe').featureId,null);
-  db.deleteTask(feature); assert.equal(find(db,'Feature XY definieren').featureId,null);
-  assert.equal(find(db,'Feature XY definieren').status,'done');
-  db.close();
-});
-
-test('reassigning a task updates exactly one feature and project moves cannot retain a foreign feature', t => {
-  const file=tempDatabase(t); const db=new PlannerDatabase(file);
-  db.saveProject(null,{title:'A',kind:'software',priority:'normal',description:''});
-  db.saveProject(null,{title:'B',kind:'software',priority:'normal',description:''});
-  const a=db.read().projects.find(p=>p.title==='A').id, b=db.read().projects.find(p=>p.title==='B').id;
-  db.saveTask(null,fields('F1',{kind:'feature',projectId:a})); db.saveTask(null,fields('F2',{kind:'feature',projectId:a}));
-  const f1=find(db,'F1').id,f2=find(db,'F2').id;
-  db.saveTask(null,fields('Task',{projectId:a,featureId:f1})); const id=find(db,'Task').id;
-  db.assignFeature(id,f2); assert.equal(find(db,'Task').featureId,f2);
-  assert.equal(db.read().tasks.filter(task=>task.featureId===f1).length,0);
-  assert.throws(()=>db.saveTask(id,fields('Task',{projectId:b,featureId:f2})),/selben Softwareprojekt/);
-  assert.equal(find(db,'Task').projectId,a); assert.equal(find(db,'Task').featureId,f2);
-  db.saveTask(id,fields('Task',{projectId:b,featureId:null}));
-  assert.equal(find(db,'Task').projectId,b); assert.equal(find(db,'Task').featureId,null);
-  db.close();
-});
-
-test('fix migration preserves existing feature links, criteria and dependencies and retains foreign keys', t => {
+test('migration clears task assignments while preserving criteria, dependencies and foreign keys', t => {
   const file=tempDatabase(t); let old=new DatabaseSync(file);
   old.exec(`PRAGMA foreign_keys=ON;
     CREATE TABLE projects(id INTEGER PRIMARY KEY,title TEXT NOT NULL,priority TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL DEFAULT 'normal' CHECK(kind IN ('normal','software'))) STRICT;
@@ -300,14 +254,14 @@ test('fix migration preserves existing feature links, criteria and dependencies 
     INSERT INTO subtasks VALUES(1,2,'Unteraufgabe',0);
     INSERT INTO task_dependencies VALUES(1,2);`); old.close();
   let db=new PlannerDatabase(file); let w=db.read();
-  assert.equal(w.projects[0].kind,'software'); assert.equal(w.tasks.find(x=>x.id===2).featureId,1);
+  assert.equal(w.projects[0].kind,'software'); assert.equal(w.tasks.find(x=>x.id===2).featureId,null);
   assert.equal(w.tasks.find(x=>x.id===1).criteria[0].completed,true); assert.deepEqual(w.tasks.find(x=>x.id===2).predecessorIds,[1]); assert.equal(w.subtasks[0].title,'Unteraufgabe');
   db.createRelease(1,'v2');
   db.saveTask(null,fields('Bugfix',{kind:'fix',projectId:1,releaseId:db.read().releases.find(r=>r.version==='v2').id,criteria:[{id:null,text:'Fehler behoben',completed:true}]}));
-  const fix=find(db,'Bugfix').id; db.assignFeature(2,fix);
+  const fix=find(db,'Bugfix').id; assert.throws(() => db.saveTask(null,fields('invalid',{projectId:1,featureId:fix})), /nicht mehr unterstützt/);
   assert.throws(()=>db.saveTask(null,fields('Ungültig',{kind:'fix'})),/Softwareprojekt/);
   db.close(); db=new PlannerDatabase(file); w=db.read();
-  assert.equal(w.tasks.find(x=>x.id===2).featureId,fix); assert.equal(w.tasks.find(x=>x.id===fix).targetVersion,'v2');
+  assert.equal(w.tasks.find(x=>x.id===2).featureId,null); assert.equal(w.tasks.find(x=>x.id===fix).targetVersion,'v2');
   assert.equal(w.tasks.find(x=>x.id===fix).criteria[0].completed,true);
   db.deleteTask(fix); assert.equal(db.read().tasks.find(x=>x.id===2).featureId,null); db.close();
   old=new DatabaseSync(file); assert.equal(old.prepare('PRAGMA foreign_key_check').all().length,0); old.close();
@@ -322,7 +276,7 @@ test('a new process reloads fix details, checked criteria and linked task', t =>
   db.createRelease(projectId,'v0.4.0');
   db.saveTask(null,fields('Fix',{kind:'fix',projectId,releaseId:db.read().releases[0].id,criteria:[{id:null,text:'Fehler ist behoben',completed:true}]}));
   const fix=find(db,'Fix').id;
-  db.saveTask(null,fields('Fix testen',{projectId,featureId:fix}));
+  db.saveTask(null,fields('Fix testen',{projectId}));
   db.close();
   const script = `const { PlannerDatabase } = require('./dist/database'); const db = new PlannerDatabase(process.argv[1]); const w = db.read(); console.log(JSON.stringify(w)); db.close();`;
   const child=spawnSync(process.execPath,['-e',script,file],{cwd:process.cwd(),encoding:'utf8'});
@@ -330,7 +284,7 @@ test('a new process reloads fix details, checked criteria and linked task', t =>
   const workspace=JSON.parse(child.stdout); const restored=workspace.tasks.find(task=>task.id===fix);
   assert.equal(restored.kind,'fix'); assert.equal(restored.targetVersion,'v0.4.0');
   assert.equal(restored.criteria[0].text,'Fehler ist behoben'); assert.equal(restored.criteria[0].completed,true);
-  assert.equal(workspace.tasks.find(task=>task.title==='Fix testen').featureId,fix);
+  assert.equal(workspace.tasks.find(task=>task.title==='Fix testen').featureId,null);
 });
 
 test('legacy target versions migrate to project-specific planned releases only once', t => {

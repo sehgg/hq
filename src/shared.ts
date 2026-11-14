@@ -22,7 +22,6 @@ export interface HqApi {
  saveTask(id: number | null, fields: TaskFields, revision: number): Promise<Workspace>;
  completeTask(id: number, completed: boolean, revision: number): Promise<Workspace>;
  deleteTask(id: number, revision: number): Promise<Workspace>;
- assignFeature(taskId: number, featureId: number | null, revision: number): Promise<Workspace>;
  addSubtask(taskId: number, title: string, revision: number): Promise<Workspace>;
  completeSubtask(id: number, completed: boolean, revision: number): Promise<Workspace>;
  completeCriterion(id: number, completed: boolean, revision: number): Promise<Workspace>;

@@ -42,7 +42,7 @@ sequenceDiagram
 
 The renderer collects the editor fields and the revision from its current workspace. `src/preload.ts` forwards the call using `ipcRenderer.invoke`; `src/main.ts` handles `task:save` and calls `PlannerDatabase.mutate` and `saveTask`. The database layer validates fields and relationships, updates the task, predecessors and acceptance criteria, and returns the updated workspace. Errors propagate to the editor instead of closing it. The window uses context isolation, a sandboxed renderer, and a preload bridge rather than exposing Node directly to the renderer.
 
-The CLI resolves a task and reads the workspace, then uses the same `mutate` and `saveTask` methods. It does not send IPC to the desktop app. Both interfaces therefore use the database rules for project deadlines, same-project associations, dependency cycles, and completion. In particular, a task cannot be completed while it has open subtasks or predecessors, and a release cannot be published while assigned entries are open.
+The CLI resolves a task and reads the workspace, then uses the same `mutate` and `saveTask` methods. It does not send IPC to the desktop app. Both interfaces therefore use the database rules for project deadlines, dependency cycles, and completion. In particular, a task cannot be completed while it has open subtasks or predecessors, and a release cannot be published while assigned entries are open.
 
 ## Concurrent changes
 
@@ -56,3 +56,5 @@ The desktop renderer polls for a newer workspace every two seconds. It defers re
 - **Facade:** `PlannerDatabase` offers task, project, and release operations while hiding SQL and schema details from the two front ends.
 - **Adapter / bridge:** preload and IPC translate the renderer's typed API into calls handled by the main process; the CLI adapts command-line arguments to the same database operations.
 - **Optimistic concurrency control:** the workspace revision detects stale edits, and SQLite transactions serialize the check and write. This is a concurrency technique, not a claim that the app uses a larger framework or domain architecture.
+
+Legacy task-to-feature and task-to-fix assignments are cleared transactionally when an existing database is opened. Tasks and their dependency links remain intact.

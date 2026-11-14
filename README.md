@@ -26,7 +26,7 @@ On Apple Silicon the app is `out/HQ-darwin-arm64/HQ.app`; on Intel macOS it is `
 3. Select the task to open its details on the right. Use **[ B ]** to edit it and add or check subtasks in the details. A task cannot be completed while a subtask or predecessor remains open.
 4. In a software project, use the **Features**, **Fixes**, and **Releases** tabs to plan work. Assign an entry to a release in its editor. A release can be published once all its assigned tasks, features, and fixes are done.
 
-The numbers beside project names and **Posteingang** count open entries. **Ideen** and **Recherche** are placeholders. Drag either sidebar divider to change its width; the focused divider also accepts the arrow keys.
+Task, feature, and fix lists and the inbox show title, status, priority, and due date in columns. Each list contains entries from its own project or inbox. **Ideen** and **Recherche** are placeholders. Drag either sidebar divider to change its width; the focused divider also accepts the arrow keys.
 
 ## A typical CLI workflow
 
@@ -47,15 +47,11 @@ For implementation details, see [Architecture](docs/ARCHITECTURE.md); for develo
 
 ## Deleting entries
 
-Open a task, feature, or fix and choose **Löschen** in the details panel. Confirming permanently deletes the entry, its subtasks and acceptance criteria, and its dependency links. Linked entries remain in place.
-
-## Linking tasks to features and fixes
-
-In a software project's feature or fix details, use **Zugehörige Aufgaben** to create or assign tasks from the same project. Task details let you open, change, or clear the associated feature or fix. Assignments do not change either entry's status or create a predecessor relationship.
+Open the editor for an existing task, feature, fix, or release and choose **Löschen**. Confirming permanently deletes a task, feature, or fix along with its subtasks, acceptance criteria, and dependency links. Deleting a release removes its assignments. Linked entries remain in place.
 
 ## Planning releases
 
-Software projects have a **Releases** tab. Use **[ + ]** to create a version and **[ B ]** to edit an existing version, its optional due date, and its status. Releases can be planned, in progress, paused, or published. Tasks, features, and fixes can target an unpublished release in the same project. The release overview and details show their current statuses. A release can be published only after all assigned entries are done; HQ lists the open entries that block publication. Changing a release back to an unpublished status makes it selectable again. Publishing removes that version from new selections while retaining existing assignments and the release contents. Existing free-text target versions are migrated to planned releases when the database is upgraded. Select a release to open its details, edit it or delete it. Deleting a release removes its assignments but keeps the entries.
+Software projects have a **Releases** tab. Use **[ + ]** to create a version and **[ B ]** to edit an existing version, its optional due date, and its status. Releases can be planned, in progress, paused, or published. Tasks, features, and fixes can target an unpublished release in the same project. The release overview and details show their current statuses. A release can be published only after all assigned entries are done; HQ lists the open entries that block publication. Changing a release back to an unpublished status makes it selectable again. Publishing removes that version from new selections while retaining existing assignments and the release contents. Existing free-text target versions are migrated to planned releases when the database is upgraded. Select a release to open its details and edit or delete it in the editor. Deleting a release removes its assignments but keeps the entries.
 
 ## Project deadlines
 
@@ -84,14 +80,14 @@ hq releases --project "My project"
 hq release-create --project "My project" --version "v1.0"
 hq create --inbox --title "Review inbox"
 hq show --project "My project" --title "Export"
-hq create --project "My project" --title "Test export" --feature 7 --release 2 --due 2026-11-30
+hq create --project "My project" --title "Test export" --release 2 --due 2026-11-30
 hq edit --id 12 --status in_progress --predecessors 8,9
 hq subtask-add --id 12 --text "Check the CSV"
 hq subtask-done --subtask 3
 hq done --id 12
 ```
 
-`projects` and `project` read project details; `releases` lists a project's releases and their IDs. `tasks` with only a project lists open entries whose predecessors and subtasks are complete; it never changes an entry. `tasks --all --open` lists all open entries across projects and the inbox, including blocked entries; `--kind` narrows the result to tasks, features, or fixes. A title filter searches case-insensitively. Use an entry `--id`, or `--project-id` for duplicate project names, to select an unambiguous match before changing anything. `create` and `edit` support descriptions, priority, status, dates, predecessor IDs, feature and release IDs, and `--criteria` as a JSON array containing `id`, `text`, and `completed`. A new criterion has `id: null`; existing IDs must belong to the entry. `criterion-done` toggles a criterion, and `--undo` reopens a criterion or subtask. `--move-to` changes the project by ID; the same project and release consistency rules apply. Deletion remains in the desktop app.
+`projects` and `project` read project details; `releases` lists a project's releases and their IDs. `tasks` with only a project lists open entries whose predecessors and subtasks are complete; it never changes an entry. `tasks --all --open` lists all open entries across projects and the inbox, including blocked entries; `--kind` narrows the result to tasks, features, or fixes. A title filter searches case-insensitively. Use an entry `--id`, or `--project-id` for duplicate project names, to select an unambiguous match before changing anything. `create` and `edit` support descriptions, priority, status, dates, predecessor IDs, release IDs, and `--criteria` as a JSON array containing `id`, `text`, and `completed`. A new criterion has `id: null`; existing IDs must belong to the entry. `criterion-done` toggles a criterion, and `--undo` reopens a criterion or subtask. `--move-to` changes the project by ID; the same project and release consistency rules apply. Deletion remains in the desktop app.
 
 `--json` returns `{ "ok": true, "data": ... }` on standard output. Projects and search results are ordered by numeric ID; task details include their sorted predecessor and successor IDs and subtasks. Status values are `planned`, `in_progress`, `paused`, and `done`; entry kinds are `task`, `feature`, and `fix`. Failures are written to standard error as `{ "ok": false, "error": { "code": "...", "message": "..." } }`. Exit codes are 0 for success, 2 for invalid arguments or validation errors, 3 for ambiguity, 4 for missing entries or database, and 5 for a concurrent change or busy database. Error codes include `INVALID_ARGUMENT`, `VALIDATION_ERROR`, `AMBIGUOUS`, `NOT_FOUND`, `DATABASE_NOT_FOUND`, `CONFLICT`, and `DATABASE_BUSY`.
 

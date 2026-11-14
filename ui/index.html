@@ -85,7 +85,6 @@
           </div>
           <fieldset class="predecessors"><legend>Vorgänger</legend><div id="entry-predecessors"></div><button type="button" class="button compact" id="add-predecessor" aria-label="Vorgänger hinzufügen" title="Vorgänger hinzufügen">+</button></fieldset>
         </div>
-        <label class="field extra-field" id="task-feature-field" hidden><span>Zugehöriges Feature oder Fix</span><select id="entry-task-feature"></select></label>
         <div class="field-row">
           <label class="field">
             <span>Priorität</span>
@@ -104,6 +103,7 @@
 
       <p id="editor-error" class="editor-error" role="alert" hidden></p>
       <div class="dialog-actions">
+        <button type="button" class="button danger" id="delete-entry" hidden>Löschen</button>
         <button type="button" class="button secondary" id="cancel-editor">Abbrechen</button>
         <button type="submit" class="button primary" id="save-entry">Speichern</button>
       </div>
@@ -112,16 +112,11 @@
   <dialog id="release-dialog" aria-labelledby="release-dialog-title">
     <form id="release-form"><div class="dialog-head"><h2 id="release-dialog-title">Neues Release</h2><button type="button" class="button compact" id="close-release" aria-label="Schließen">×</button></div>
     <fieldset><label class="field"><span>Versionsnummer</span><input id="release-version" type="text" maxlength="120" required placeholder="z. B. v0.4.0"></label><label class="field extra-field"><span>Fällig am</span><input id="release-due" type="date"></label><label class="field extra-field" id="release-status-field" hidden><span>Status</span><select id="release-status"><option value="planned">Geplant</option><option value="in_progress">In Arbeit</option><option value="paused">Pausiert</option><option value="published">Veröffentlicht</option></select></label></fieldset>
-    <p id="release-error" class="editor-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" class="button secondary" id="cancel-release">Abbrechen</button><button type="submit" class="button primary" id="save-release">Release anlegen</button></div></form>
+    <p id="release-error" class="editor-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" class="button danger" id="delete-release-entry" hidden>Löschen</button><button type="button" class="button secondary" id="cancel-release">Abbrechen</button><button type="submit" class="button primary" id="save-release">Release anlegen</button></div></form>
   </dialog>
   <dialog id="publish-dialog" aria-labelledby="publish-title" aria-describedby="publish-description">
     <div class="dialog-head"><h2 id="publish-title">Release veröffentlichen?</h2></div><div class="delete-content"><p id="publish-description"></p><p id="publish-error" class="editor-error" role="alert" hidden></p></div>
     <div class="dialog-actions"><button type="button" class="button secondary" id="cancel-publish" autofocus>Abbrechen</button><button type="button" class="button primary" id="confirm-publish">Veröffentlichen</button></div>
-  </dialog>
-  <dialog id="feature-task-dialog" aria-labelledby="feature-task-title">
-    <div class="dialog-head"><h2 id="feature-task-title">Aufgabe zuordnen</h2><button type="button" class="button compact" id="close-feature-task" aria-label="Schließen">×</button></div>
-    <fieldset><p>Eine neue Aufgabe anlegen oder eine bestehende Aufgabe aus diesem Projekt auswählen.</p><button type="button" class="button secondary" id="new-feature-task" aria-label="Neue zugehörige Aufgabe anlegen" title="Neue zugehörige Aufgabe anlegen">+</button><label class="field extra-field"><span>Bestehende Aufgabe</span><select id="existing-feature-task"></select></label><p id="feature-task-error" class="editor-error" role="alert" hidden></p></fieldset>
-    <div class="dialog-actions"><button type="button" class="button secondary" id="cancel-feature-task">Abbrechen</button><button type="button" class="button primary" id="assign-feature-task">Zuordnen</button></div>
   </dialog>
   <dialog id="predecessor-dialog" aria-labelledby="predecessor-dialog-title">
     <form id="predecessor-form">

@@ -22,11 +22,11 @@ const help = `HQ CLI
   hq subtask-done --subtask ID [--undo]
   hq criterion-done --criterion ID [--undo]
 Options: --description TEXT --priority low|normal|high --status planned|in_progress|paused|done
-  --due YYYY-MM-DD|none --predecessors ID,ID|none --feature ID|none --release ID|none
+  --due YYYY-MM-DD|none --predecessors ID,ID|none --release ID|none
   --criteria JSON (array of {id:null|number,text:string,completed:boolean}); --move-to PROJECT_ID
   --project-id ID selects a project with a duplicate name; --db PATH; --json
 Use task IDs to resolve ambiguous matches. Tasks without a title filter are suggestions only.\n`;
-const options = Object.fromEntries(['project','project-id','move-to','title','new-title','id','kind','description','priority','status','due','predecessors','feature','release','criteria','subtask','criterion','text','version','db'].map(key => [key,{type:'string' as const}]));
+const options = Object.fromEntries(['project','project-id','move-to','title','new-title','id','kind','description','priority','status','due','predecessors','release','criteria','subtask','criterion','text','version','db'].map(key => [key,{type:'string' as const}]));
 let args: ReturnType<typeof parseArgs>;
 try { args = parseArgs({args:process.argv.slice(2), options:{...options,json:{type:'boolean'},undo:{type:'boolean'},help:{type:'boolean'},inbox:{type:'boolean'},all:{type:'boolean'},open:{type:'boolean'}},allowPositionals:true,strict:true}); }
 catch (error) {
@@ -75,7 +75,7 @@ function fields(base:TaskFields):TaskFields {
   priority:(str('priority') ?? base.priority) as TaskFields['priority'], status:(str('status') ?? base.status) as TaskFields['status'],
   dueDate:str('due')===undefined ? base.dueDate : str('due')==='none' ? null : str('due')!,
   predecessorIds:list===undefined ? base.predecessorIds : list==='none' ? [] : list.split(',').map(s=>integer(s.trim(),'--predecessors')),
-  featureId:optionalId('feature',base.featureId), releaseId:optionalId('release',base.releaseId), criteria:parsed,
+  featureId:null, releaseId:optionalId('release',base.releaseId), criteria:parsed,
  };
 }
 function taskDetail(w:Workspace,t:Task) { return {...t,predecessorIds:[...t.predecessorIds].sort((a,b)=>a-b),successorIds:[...t.successorIds].sort((a,b)=>a-b),subtasks:w.subtasks.filter(s=>s.taskId===t.id).sort((a,b)=>a.id-b.id)}; }
@@ -89,7 +89,7 @@ function render(data:unknown):void {
    return;
   }
   const item=data as Task & {subtasks?:{id:number;title:string;completed:boolean}[]};
-  console.log(`#${item.id} ${item.title}\nTyp: ${item.kind} · Status: ${item.status} · Priorität: ${item.priority}\nFällig: ${item.dueDate ?? '–'} · Feature: ${item.featureId ?? '–'} · Release: ${item.releaseId ?? '–'}\nBeschreibung: ${item.description || '–'}\nVorgänger: ${item.predecessorIds?.join(', ') || '–'}`);
+  console.log(`#${item.id} ${item.title}\nTyp: ${item.kind} · Status: ${item.status} · Priorität: ${item.priority}\nFällig: ${item.dueDate ?? '–'} · Release: ${item.releaseId ?? '–'}\nBeschreibung: ${item.description || '–'}\nVorgänger: ${item.predecessorIds?.join(', ') || '–'}`);
   for (const sub of item.subtasks ?? []) console.log(`  [${sub.completed?'x':' '}] Unteraufgabe #${sub.id}: ${sub.title}`);
   for (const criterion of item.criteria ?? []) console.log(`  [${criterion.completed?'x':' '}] Kriterium #${criterion.id}: ${criterion.text}`);
   return;

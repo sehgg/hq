@@ -9,7 +9,7 @@ type ReleaseStatus = import('./shared').ReleaseStatus;
 type TaskStatus = import('./shared').TaskStatus;
 type HqApi = import('./shared').HqApi;
 type View = 'inbox' | 'projects' | 'ideas' | 'research' | number;
-type EditorMode = { kind: 'project'; id: number | null } | { kind: 'task'; id: number | null; featureId?: number };
+type EditorMode = { kind: 'project'; id: number | null } | { kind: 'task'; id: number | null };
 
 interface Window {
   hq: HqApi;
@@ -33,11 +33,6 @@ const publishDescription = document.querySelector<HTMLElement>('#publish-descrip
 const publishError = document.querySelector<HTMLElement>('#publish-error')!;
 const confirmPublish = document.querySelector<HTMLButtonElement>('#confirm-publish')!;
 const publishedVersion = document.querySelector<HTMLElement>('#published-version')!;
-const featureTaskDialog = document.querySelector<HTMLDialogElement>('#feature-task-dialog')!;
-const existingFeatureTask = document.querySelector<HTMLSelectElement>('#existing-feature-task')!;
-const assignFeatureTask = document.querySelector<HTMLButtonElement>('#assign-feature-task')!;
-const featureTaskError = document.querySelector<HTMLElement>('#feature-task-error')!;
-const taskFeatureField = document.querySelector<HTMLSelectElement>('#entry-task-feature')!;
 const deleteDialog = document.querySelector<HTMLDialogElement>('#delete-dialog')!;
 const deleteTitle = document.querySelector<HTMLElement>('#delete-title')!;
 const deleteDescription = document.querySelector<HTMLElement>('#delete-description')!;
@@ -173,6 +168,7 @@ let saving = false;
 let selectedTaskId: number | null = null;
 let selectedReleaseId: number | null = null;
 let pendingDeleteReleaseId: number | null = null;
+let pendingDeleteTaskId: number | null = null;
 let selectedPredecessors = new Set<number>();
 let draftCriteria: CriterionFields[] = [];
 const releaseStatusNames: Record<ReleaseStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', published: 'Veröffentlicht' };
@@ -237,10 +233,6 @@ function pageHeading(title: string, path: string, description: string, actions: 
     </div>`;
 }
 
-function stat(label: string, value: number, color: string): string {
-  return `<div class="stat"><dt>${label}</dt><dd class="${color}">${value}</dd></div>`;
-}
-
 function emptyState(title: string, description: string, action: string): string {
   return `<div class="empty">
     <div class="empty-title"><span aria-hidden="true">//</span><strong>${title}</strong></div>
@@ -249,118 +241,35 @@ function emptyState(title: string, description: string, action: string): string 
   </div>`;
 }
 
-function taskRow(task: Task, depth = 0, showProject = false): string {
+function taskRow(task: Task): string {
   const title = escapeHtml(task.title);
+  const due = task.dueDate ? escapeHtml(task.dueDate.split('-').reverse().join('.')) : '–';
   return `<li class="task-row" data-completed="${task.completed}">
     <label class="check">
       <input type="checkbox" data-complete="${task.id}" aria-label="${title} erledigt"${task.completed ? ' checked' : ''}>
       <span class="check-glyph" aria-hidden="true"></span>
     </label>
-    <button type="button" class="task-title task-open${task.predecessorIds.length ? ' has-predecessor' : ''}" data-action="show-task" data-id="${task.id}">${'<span class="task-indent" aria-hidden="true"></span>'.repeat(depth)}${task.predecessorIds.length ? '<span class="dependency-marker" aria-label="Hat Vorgänger">↳</span>' : ''}<span class="task-title-text">${title}</span></button>
-    <span class="task-meta">${showProject ? `<span class="task-project">${escapeHtml(workspace.projects.find(project => project.id === task.projectId)?.title ?? 'Posteingang')}</span>` : ''}<span class="task-status">${statusNames[task.status]}</span>${priorityBadge(task.priority)}${task.dueDate ? `<span class="task-due">${escapeHtml(task.dueDate.split('-').reverse().join('.'))}</span>` : ''}</span>
+    <button type="button" class="task-title task-open" data-action="show-task" data-id="${task.id}"><span class="task-title-text">${title}</span></button>
+    <span class="task-status">${statusNames[task.status]}</span>
+    ${priorityBadge(task.priority)}
+    <span class="task-due">${due}</span>
     <button type="button" class="button compact" data-action="edit-task" data-id="${task.id}" aria-label="${title} bearbeiten">B</button>
   </li>`;
-}
-
-// Prefer the most downstream visible predecessor, preserving chains when a task
-// also links to an ancestor. Unrelated predecessors use due-date order.
-function orderTaskTree(tasks: Task[]): Array<{ task: Task; depth: number }> {
-  const sorted = tasks.map((task, index) => ({ task, index })).sort((a, b) => {
-    if (a.task.dueDate === null && b.task.dueDate !== null) return 1;
-    if (a.task.dueDate !== null && b.task.dueDate === null) return -1;
-    return (a.task.dueDate ?? '').localeCompare(b.task.dueDate ?? '') || a.index - b.index;
-  }).map(item => item.task);
-  const order = new Map(sorted.map((task, index) => [task.id, index]));
-  const byId = new Map(sorted.map(task => [task.id, task]));
-  const isAncestor = (ancestor: number, descendant: number): boolean => {
-    const pending = [...(byId.get(descendant)?.predecessorIds ?? [])];
-    const visited = new Set<number>();
-    while (pending.length) {
-      const id = pending.pop()!;
-      if (id === ancestor) return true;
-      if (visited.has(id)) continue;
-      visited.add(id);
-      pending.push(...(byId.get(id)?.predecessorIds ?? []));
-    }
-    return false;
-  };
-  const children = new Map<number, Task[]>();
-  const roots: Task[] = [];
-  for (const task of sorted) {
-    const visibleParents = task.predecessorIds.filter(id => order.has(id));
-    visibleParents.sort((a, b) => order.get(a)! - order.get(b)!);
-    if (visibleParents.length === 0) roots.push(task);
-    else {
-      const parent = visibleParents.find(candidate =>
-        !visibleParents.some(other => other !== candidate && isAncestor(candidate, other))) ?? visibleParents[0];
-      if (!children.has(parent)) children.set(parent, []);
-      children.get(parent)!.push(task);
-    }
-  }
-  const result: Array<{ task: Task; depth: number }> = [];
-  const pending = roots.slice().reverse().map(task => ({ task, depth: 0 }));
-  const visited = new Set<number>();
-  const traverse = () => {
-    while (pending.length) {
-      const current = pending.pop()!;
-      if (visited.has(current.task.id)) continue;
-      visited.add(current.task.id);
-      result.push(current);
-      const next = children.get(current.task.id) ?? [];
-      for (let i = next.length - 1; i >= 0; i--) pending.push({ task: next[i], depth: current.depth + 1 });
-    }
-  };
-  traverse();
-  // Defensive fallback keeps malformed or cyclic data visible.
-  for (const task of sorted) {
-    if (!visited.has(task.id)) { pending.push({ task, depth: 0 }); traverse(); }
-  }
-  return result;
 }
 
 function taskPanel(project: Project | undefined): string {
   const projectId = project?.id ?? null;
   const kind: TaskKind = project?.kind === 'software' && activeTab !== 'releases' ? activeTab : 'task';
-  const available = workspace.tasks.filter(task => task.kind === kind);
-  const ownTasks = available.filter(task => task.projectId === projectId);
-  const connected = new Set(ownTasks.map(task => task.id));
-  const neighbors = new Map<number, number[]>();
-  const addNeighbor = (id: number, neighbor: number) => {
-    if (!neighbors.has(id)) neighbors.set(id, []);
-    neighbors.get(id)!.push(neighbor);
-  };
-  const availableIds = new Set(available.map(task => task.id));
-  for (const task of available) for (const predecessor of task.predecessorIds) {
-    if (!availableIds.has(predecessor)) continue;
-    addNeighbor(task.id, predecessor);
-    addNeighbor(predecessor, task.id);
-  }
-  const pending = [...connected];
-  while (pending.length) for (const neighbor of neighbors.get(pending.pop()!) ?? []) {
-    if (!connected.has(neighbor)) { connected.add(neighbor); pending.push(neighbor); }
-  }
-  const tasks = available.filter(task => connected.has(task.id));
-  const linkedCount = tasks.length - ownTasks.length;
-  const open = ownTasks.filter(task => !task.completed);
-  return `
-    <dl class="stats">
-      ${stat('Offen', open.length, 'accent-secondary')}
-      ${stat('Hohe Priorität', open.filter(task => task.priority === 'high').length, 'accent-priority')}
-      ${stat('Erledigt', ownTasks.length - open.length, 'accent-primary')}
-    </dl>
-    <section class="panel" aria-labelledby="task-heading">
-      <header class="panel-header">
-        <h2 id="task-heading">${kind === 'feature' ? 'Features' : kind === 'fix' ? 'Fixes' : 'Aufgaben'}</h2>
-        <span class="panel-meta">${ownTasks.length} ${ownTasks.length === 1 ? 'Eintrag' : 'Einträge'}${linkedCount ? ` · ${linkedCount} verknüpft` : ''}</span>
-      </header>
-      ${tasks.length
-        ? `<ul class="list">${orderTaskTree(tasks).map(({ task, depth }) => taskRow(task, depth, task.projectId !== projectId)).join('')}</ul>`
-        : emptyState(kind === 'feature' ? 'Noch keine Features' : kind === 'fix' ? 'Noch keine Fixes' : project ? 'Hier ist Platz für deine Aufgaben' : 'Dein Posteingang ist leer',
-          kind === 'feature' ? 'Beschreibe eine neue Funktion für dieses Softwareprojekt.' : kind === 'fix' ? 'Halte einen Bugfix, ein Refactoring oder eine kleinere Änderung fest.' : project ? 'Halte den nächsten Schritt für dieses Projekt fest.' : 'Erfasse eine Aufgabe und ordne sie später einem Projekt zu.',
-          addButton('new-task', kind === 'feature' ? 'Feature anlegen' : kind === 'fix' ? 'Fix anlegen' : 'Aufgabe erfassen', 'secondary'))}
-    </section>`;
+  const tasks = workspace.tasks.filter(task => task.kind === kind && task.projectId === projectId);
+  return `<section class="panel task-panel" aria-label="${kind === 'feature' ? 'Features' : kind === 'fix' ? 'Fixes' : 'Aufgaben'}">
+    <div class="task-columns" aria-hidden="true"><span></span><span>Titel</span><span>Status</span><span>Priorität</span><span>Fälligkeit</span><span></span></div>
+    ${tasks.length
+      ? `<ul class="list">${tasks.map(task => taskRow(task)).join('')}</ul>`
+      : emptyState(kind === 'feature' ? 'Noch keine Features' : kind === 'fix' ? 'Noch keine Fixes' : project ? 'Hier ist Platz für deine Aufgaben' : 'Dein Posteingang ist leer',
+        kind === 'feature' ? 'Beschreibe eine neue Funktion für dieses Softwareprojekt.' : kind === 'fix' ? 'Halte einen Bugfix, ein Refactoring oder eine kleinere Änderung fest.' : project ? 'Halte den nächsten Schritt für dieses Projekt fest.' : 'Erfasse eine Aufgabe und ordne sie später einem Projekt zu.',
+        addButton('new-task', kind === 'feature' ? 'Feature anlegen' : kind === 'fix' ? 'Fix anlegen' : 'Aufgabe erfassen', 'secondary'))}
+  </section>`;
 }
-
 
 function releasePanel(project: Project): string {
   const releases = workspace.releases.filter(item => item.projectId === project.id);
@@ -393,8 +302,10 @@ function openReleaseDialog(id: number | null = null): void {
   document.querySelector<HTMLElement>('#release-status-field')!.hidden = !release;
   releaseStatus.value = release?.status ?? 'planned';
   saveRelease.textContent = release ? 'Speichern' : 'Release anlegen';
+  document.querySelector<HTMLElement>('#delete-release-entry')!.hidden = !release;
   releaseError.hidden = true; releaseDialog.showModal(); releaseVersion.focus();
 }
+document.querySelector('#delete-release-entry')!.addEventListener('click', () => { if (!saving && editingReleaseId !== null) openDeleteReleaseDialog(editingReleaseId); });
 for (const id of ['close-release', 'cancel-release']) document.querySelector(`#${id}`)!.addEventListener('click', () => { if (!saving) releaseDialog.close(); });
 releaseDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
 releaseForm.addEventListener('submit', async event => {
@@ -443,7 +354,7 @@ confirmDeleteRelease.addEventListener('click', async () => {
   try {
     workspace = await window.hq.deleteRelease(pendingDeleteReleaseId, workspace.revision);
     pendingDeleteReleaseId = null; selectedReleaseId = null;
-    deleteReleaseDialog.close(); render();
+    deleteReleaseDialog.close(); releaseDialog.close(); render();
     content.querySelector('h1')?.focus({ preventScroll: true });
     announce('Release gelöscht.');
   } catch (error) { deleteReleaseError.textContent = errorMessage(error); deleteReleaseError.hidden = false; }
@@ -522,29 +433,22 @@ function renderDetails(): void {
       <div class="details-body"><section><h3>Status</h3><p>${releaseStatusNames[release.status]}</p></section><section><h3>Fällig am</h3><p>${release.dueDate ? escapeHtml(release.dueDate.split('-').reverse().join('.')) : 'Kein Datum'}</p></section>
       <section><h3>Aufgaben</h3><ul class="detail-list">${list('task')}</ul></section><section><h3>Features</h3><ul class="detail-list">${list('feature')}</ul></section><section><h3>Fixes</h3><ul class="detail-list">${list('fix')}</ul></section>
       ${release.published ? '' : `<button type="button" class="button secondary" data-action="publish-release" data-id="${release.id}">Veröffentlichen</button>`}
-      <button type="button" class="button danger" data-action="delete-release" data-id="${release.id}" aria-label="Release löschen">Löschen</button></div>`;
+      </div>`;
     return;
   }
   if (!task) { details.innerHTML = ''; return; }
   const links = (ids: number[]) => workspace.tasks.filter(item => ids.includes(item.id)).map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') || '<li class="muted">Keine</li>';
   const subtasks = workspace.subtasks.filter(item => item.taskId === task.id);
-  const associated = workspace.tasks.filter(item => item.kind === 'task' && item.featureId === task.id);
   const assignedRelease = workspace.releases.find(item => item.id === task.releaseId);
   const project = workspace.projects.find(item => item.id === task.projectId);
-  const feature = workspace.tasks.find(item => item.id === task.featureId && item.kind !== 'task');
-  const availableFeatures = workspace.tasks.filter(item => item.projectId === task.projectId && item.kind !== 'task');
-  const association = task.kind !== 'task'
-    ? `<section><div class="association-header"><h3>Zugehörige Aufgaben</h3><button type="button" class="button compact" data-action="add-feature-task" aria-label="Aufgabe zu ${task.kind === 'fix' ? 'Fix' : 'Feature'} hinzufügen">+</button></div><ul class="detail-list">${associated.length ? associated.map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') : '<li class="muted">Keine zugehörigen Aufgaben</li>'}</ul></section>`
-    : project?.kind === 'software' ? `<section><h3>${feature?.kind === 'fix' ? 'Zugehöriger Fix' : 'Zugehöriges Feature oder Fix'}</h3>${feature ? `<p><button type="button" class="detail-link" data-action="show-task" data-id="${feature.id}">${escapeHtml(feature.title)}</button></p>` : '<p class="muted">Kein Feature oder Fix zugeordnet</p>'}<label class="field extra-field"><span>Zuordnung ändern oder lösen</span><select data-feature-assignment="${task.id}"><option value="">Kein Feature oder Fix</option>${availableFeatures.map(item => `<option value="${item.id}"${item.id === task.featureId ? ' selected' : ''}>${item.kind === 'fix' ? 'Fix · ' : 'Feature · '}${escapeHtml(item.title)}</option>`).join('')}</select></label></section>` : '';
   details.innerHTML = `<header class="details-header"><div class="details-heading"><p class="eyebrow">${task.kind === 'feature' ? 'Feature' : task.kind === 'fix' ? 'Fix' : 'Aufgabe'}</p><h2>${escapeHtml(task.title)}</h2></div><div class="details-actions"><button type="button" class="button compact" data-action="edit-task" data-id="${task.id}" aria-label="${task.kind === 'feature' ? 'Feature' : task.kind === 'fix' ? 'Fix' : 'Aufgabe'} bearbeiten">B</button><button type="button" class="button compact" data-action="close-details" aria-label="Details schließen">×</button></div></header>
     <div class="details-body"><section><h3>Beschreibung</h3><p class="description">${task.description ? escapeHtml(task.description) : 'Keine Beschreibung'}</p></section>
     ${project?.kind === 'software' ? `<section><h3>Zielversion</h3><p>${task.targetVersion ? escapeHtml(task.targetVersion) + (assignedRelease?.published ? ' (veröffentlicht)' : '') : 'Keine Zielversion'}</p></section>` : ''}${task.kind !== 'task' ? `<section><h3>Akzeptanzkriterien</h3><ul class="detail-list">${task.criteria.length ? task.criteria.map(criterion => `<li><label><input type="checkbox" data-criterion="${criterion.id}" ${criterion.completed ? 'checked' : ''}> ${escapeHtml(criterion.text)}</label></li>`).join('') : '<li class="muted">Keine Kriterien</li>'}</ul></section>` : ''}
-    ${association}
     <section><h3>Status</h3><p>${statusNames[task.status]}</p></section><section><h3>Fällig am</h3><p>${task.dueDate ? escapeHtml(task.dueDate.split('-').reverse().join('.')) : 'Kein Datum'}</p></section>
     <section><h3>Unteraufgaben</h3><ul class="detail-list">${subtasks.map(item => `<li><label><input type="checkbox" data-subtask="${item.id}" ${item.completed ? 'checked' : ''}> ${escapeHtml(item.title)}</label></li>`).join('')}</ul>
     <form id="subtask-form" class="subtask-form"><label class="sr-only" for="subtask-title">Neue Unteraufgabe</label><input id="subtask-title" maxlength="120" required placeholder="Neue Unteraufgabe"><button class="button compact" type="submit" aria-label="Unteraufgabe anlegen">+</button></form></section>
     <section><h3>Vorgänger</h3><ul class="detail-list">${links(task.predecessorIds)}</ul></section><section><h3>Folgeaufgaben</h3><ul class="detail-list">${links(task.successorIds)}</ul></section>
-    <button type="button" class="button danger" data-action="delete-task" data-id="${task.id}" aria-label="${task.kind === 'feature' ? 'Feature' : task.kind === 'fix' ? 'Fix' : 'Aufgabe'} löschen">Löschen</button></div>`;
+    </div>`;
 }
 details.addEventListener('submit', async event => {
   if (!(event.target instanceof HTMLFormElement) || event.target.id !== 'subtask-form' || selectedTaskId === null || saving) return;
@@ -560,9 +464,10 @@ details.addEventListener('submit', async event => {
 function openDeleteDialog(id: number): void {
   const task = workspace.tasks.find(item => item.id === id);
   if (!task) return;
+  pendingDeleteTaskId = id;
   const kind = task.kind === 'feature' ? 'Feature' : task.kind === 'fix' ? 'Fix' : 'Aufgabe';
   deleteTitle.textContent = `${kind} löschen?`;
-  deleteDescription.textContent = `„${task.title}“ wird endgültig gelöscht. Unteraufgaben${task.kind !== 'task' ? ', Akzeptanzkriterien und die Zuordnung zugehöriger Aufgaben' : ''} und Verknüpfungen werden entfernt. Verknüpfte Einträge bleiben erhalten.`;
+  deleteDescription.textContent = `„${task.title}“ wird endgültig gelöscht. Unteraufgaben${task.kind !== 'task' ? ', Akzeptanzkriterien' : ''} und Verknüpfungen werden entfernt. Verknüpfte Einträge bleiben erhalten.`;
   deleteError.hidden = true;
   deleteDialog.showModal();
   cancelDelete.focus();
@@ -570,8 +475,8 @@ function openDeleteDialog(id: number): void {
 cancelDelete.addEventListener('click', () => { if (!saving) deleteDialog.close(); });
 deleteDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
 confirmDelete.addEventListener('click', async () => {
-  if (saving || selectedTaskId === null) return;
-  const task = workspace.tasks.find(item => item.id === selectedTaskId);
+  if (saving || pendingDeleteTaskId === null) return;
+  const task = workspace.tasks.find(item => item.id === pendingDeleteTaskId);
   if (!task) return;
   saving = true;
   confirmDelete.disabled = true;
@@ -579,8 +484,10 @@ confirmDelete.addEventListener('click', async () => {
   deleteError.hidden = true;
   try {
     workspace = await window.hq.deleteTask(task.id, workspace.revision);
-    selectedTaskId = null;
+    if (selectedTaskId === task.id) selectedTaskId = null;
+    pendingDeleteTaskId = null;
     deleteDialog.close();
+    editor.close();
     render();
     content.querySelector('h1')?.focus({ preventScroll: true });
     announce(task.kind === 'feature' ? 'Feature gelöscht.' : task.kind === 'fix' ? 'Fix gelöscht.' : 'Aufgabe gelöscht.');
@@ -617,9 +524,8 @@ function openEditor(mode: EditorMode): void {
   const isTask = mode.kind === 'task';
   const task = isTask ? workspace.tasks.find(item => item.id === mode.id) : undefined;
   const entry = isTask ? task : workspace.projects.find(item => item.id === mode.id);
-  const sourceFeature = mode.kind === 'task' && mode.featureId ? workspace.tasks.find(item => item.id === mode.featureId && item.kind !== 'task') : undefined;
-  const currentProject = task ? task.projectId : sourceFeature ? sourceFeature.projectId : (typeof view === 'number' ? view : null);
-  editorTaskKind = task?.kind ?? (isTask && !sourceFeature && activeTab !== 'releases' ? activeTab : 'task');
+  const currentProject = task ? task.projectId : (typeof view === 'number' ? view : null);
+  editorTaskKind = task?.kind ?? (isTask && activeTab !== 'releases' ? activeTab : 'task');
   const isFeature = isTask && editorTaskKind !== 'task';
   const isFix = isTask && editorTaskKind === 'fix';
   document.querySelector<HTMLElement>('#project-kind-field')!.hidden = isTask;
@@ -652,11 +558,11 @@ function openEditor(mode: EditorMode): void {
     ...workspace.projects.filter(project => !isFeature || project.kind === 'software').map(project => new Option(project.title, String(project.id))),
   );
   projectField.value = currentProject === null ? '' : String(currentProject);
-  updateEditorFeatures(isTask && !isFeature, task?.featureId ?? sourceFeature?.id ?? null);
   updateReleaseOptions(isTask, task?.releaseId ?? null);
   saveButton.textContent = entry ? 'Speichern' : '+';
   saveButton.setAttribute('aria-label', entry ? 'Speichern' : (isFix ? 'Fix anlegen' : isFeature ? 'Feature anlegen' : isTask ? 'Aufgabe anlegen' : 'Projekt anlegen'));
   saveButton.title = entry ? 'Speichern' : (isFix ? 'Fix anlegen' : isFeature ? 'Feature anlegen' : isTask ? 'Aufgabe anlegen' : 'Projekt anlegen');
+  document.querySelector<HTMLElement>('#delete-entry')!.hidden = !task;
   editorError.hidden = true;
   editor.showModal();
   titleField.focus();
@@ -665,6 +571,8 @@ function openEditor(mode: EditorMode): void {
 
 
 
+
+document.querySelector('#delete-entry')!.addEventListener('click', () => { if (!saving && editing?.kind === 'task' && editing.id !== null) openDeleteDialog(editing.id); });
 
 function projectDueConflicts(): Task[] {
   if (!editing || editing.kind !== 'project' || editing.id === null || !projectDueField.value) return [];
@@ -680,46 +588,7 @@ function renderProjectDueConflicts(): void {
 projectDueField.addEventListener('input', renderProjectDueConflicts);
 projectDueField.addEventListener('change', renderProjectDueConflicts);
 
-function updateEditorFeatures(show: boolean, selected: number | null): void {
-  const projectId = projectField.value ? Number(projectField.value) : null;
-  const project = workspace.projects.find(item => item.id === projectId);
-  document.querySelector<HTMLElement>('#task-feature-field')!.hidden = !show || project?.kind !== 'software';
-  const features = workspace.tasks.filter(item => item.kind !== 'task' && item.projectId === projectId);
-  taskFeatureField.replaceChildren(new Option('Kein Feature oder Fix', ''), ...features.map(item => new Option(`${item.kind === 'fix' ? 'Fix' : 'Feature'} · ${item.title}`, String(item.id))));
-  taskFeatureField.value = features.some(item => item.id === selected) ? String(selected) : '';
-}
-projectField.addEventListener('change', () => { updateEditorFeatures(editing?.kind === 'task' && editorTaskKind === 'task', null); updateReleaseOptions(editing?.kind === 'task', null); });
-function openFeatureTaskDialog(): void {
-  const feature = workspace.tasks.find(item => item.id === selectedTaskId && item.kind !== 'task');
-  if (!feature) return;
-  const tasks = workspace.tasks.filter(item => item.kind === 'task' && item.projectId === feature.projectId && item.featureId !== feature.id);
-  existingFeatureTask.replaceChildren(new Option('Aufgabe auswählen', ''), ...tasks.map(item => {
-    const assigned = workspace.tasks.find(candidate => candidate.id === item.featureId);
-    return new Option(assigned ? `${item.title} (aktuell: ${assigned.title})` : item.title, String(item.id));
-  }));
-  existingFeatureTask.disabled = tasks.length === 0;
-  assignFeatureTask.disabled = true;
-  featureTaskError.hidden = true;
-  featureTaskDialog.showModal();
-}
-existingFeatureTask.addEventListener('change', () => { assignFeatureTask.disabled = !existingFeatureTask.value; });
-for (const id of ['close-feature-task', 'cancel-feature-task']) document.querySelector(`#${id}`)!.addEventListener('click', () => { if (!saving) featureTaskDialog.close(); });
-featureTaskDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
-document.querySelector<HTMLButtonElement>('#new-feature-task')!.addEventListener('click', () => {
-  if (saving || selectedTaskId === null) return;
-  const featureId = selectedTaskId;
-  featureTaskDialog.close();
-  openEditor({kind:'task', id:null, featureId});
-});
-assignFeatureTask.addEventListener('click', async () => {
-  if (saving || selectedTaskId === null || !existingFeatureTask.value) return;
-  saving = true;
-  assignFeatureTask.disabled = true;
-  featureTaskError.hidden = true;
-  try { workspace = await window.hq.assignFeature(Number(existingFeatureTask.value), selectedTaskId, workspace.revision); featureTaskDialog.close(); render(); announce('Aufgabe zugeordnet.'); }
-  catch (error) { featureTaskError.textContent = errorMessage(error); featureTaskError.hidden = false; }
-  finally { saving = false; assignFeatureTask.disabled = !existingFeatureTask.value; }
-});
+projectField.addEventListener('change', () => { updateReleaseOptions(editing?.kind === 'task', null); });
 
 function renderCriteriaEditor(): void {
   criteriaField.innerHTML = draftCriteria.map((criterion, index) => `<div class="criterion-row"><label class="criterion-check"><input type="checkbox" data-criterion-check="${index}" ${criterion.completed ? 'checked' : ''} aria-label="Kriterium ${index + 1} erfüllt"></label><label class="criterion-text"><span class="sr-only">Akzeptanzkriterium ${index + 1}</span><input type="text" required maxlength="1000" data-criterion-text="${index}" value="${escapeHtml(criterion.text)}" placeholder="Prüfbares Kriterium"></label><button type="button" class="button compact" data-remove-criterion="${index}" aria-label="Kriterium ${index + 1} entfernen">−</button></div>`).join('');
@@ -800,13 +669,10 @@ document.addEventListener('click', event => {
     case 'tab-feature': activeTab = 'feature'; selectedTaskId = null; selectedReleaseId = null; render(); break;
     case 'tab-releases': activeTab = 'releases'; selectedTaskId = null; selectedReleaseId = null; render(); break;
     case 'show-release': selectedTaskId = null; selectedReleaseId = Number(target.dataset.id); renderDetails(); break;
-    case 'delete-release': openDeleteReleaseDialog(Number(target.dataset.id)); break;
     case 'new-release': openReleaseDialog(); break;
     case 'edit-release': openReleaseDialog(Number(target.dataset.id)); break;
     case 'publish-release': openPublishDialog(Number(target.dataset.id)); break;
     case 'tab-fix': activeTab = 'fix'; selectedTaskId = null; selectedReleaseId = null; render(); break;
-    case 'add-feature-task': openFeatureTaskDialog(); break;
-    case 'delete-task': openDeleteDialog(Number(target.dataset.id)); break;
     case 'show-task': selectedReleaseId = null; selectedTaskId = Number(target.dataset.id); renderDetails(); break;
     case 'close-details': selectedTaskId = null; selectedReleaseId = null; renderDetails(); break;
     case 'new-task': openEditor({ kind: 'task', id: null }); break;
@@ -818,16 +684,6 @@ document.addEventListener('click', event => {
 
 document.addEventListener('change', async event => {
   const checkbox = event.target;
-  if (checkbox instanceof HTMLSelectElement && checkbox.dataset.featureAssignment) {
-    const taskId = Number(checkbox.dataset.featureAssignment);
-    if (saving) { renderDetails(); return; }
-    saving = true;
-    checkbox.disabled = true;
-    try { workspace = await window.hq.assignFeature(taskId, checkbox.value ? Number(checkbox.value) : null, workspace.revision); render(); announce('Zuordnung gespeichert.'); }
-    catch (error) { renderDetails(); announce(errorMessage(error), true); }
-    finally { saving = false; checkbox.disabled = false; }
-    return;
-  }
   if (!(checkbox instanceof HTMLInputElement)) return;
   if (checkbox.dataset.criterion) {
     const checked = checkbox.checked;
@@ -922,7 +778,7 @@ form.addEventListener('submit', async event => {
       showView(newProject?.id ?? view);
       announce(mode.id === null ? 'Projekt angelegt.' : 'Projekt gespeichert.');
     } else {
-      workspace = await window.hq.saveTask(mode.id, { ...fields, kind: editorTaskKind, featureId: editorTaskKind === 'task' && taskFeatureField.value ? Number(taskFeatureField.value) : null, releaseId: targetVersionField.value === 'keep-published' ? editorPublishedReleaseId : targetVersionField.value ? Number(targetVersionField.value) : null, criteria: editorTaskKind !== 'task' ? draftCriteria : [], projectId, dueDate: dueField.value || null, status: statusField.value as TaskStatus, predecessorIds: [...selectedPredecessors] }, workspace.revision);
+      workspace = await window.hq.saveTask(mode.id, { ...fields, kind: editorTaskKind, featureId: null, releaseId: targetVersionField.value === 'keep-published' ? editorPublishedReleaseId : targetVersionField.value ? Number(targetVersionField.value) : null, criteria: editorTaskKind !== 'task' ? draftCriteria : [], projectId, dueDate: dueField.value || null, status: statusField.value as TaskStatus, predecessorIds: [...selectedPredecessors] }, workspace.revision);
       editing = null;
       editor.close();
       render();

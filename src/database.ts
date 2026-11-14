@@ -74,6 +74,7 @@ export class PlannerDatabase {
    CREATE TABLE IF NOT EXISTS task_dependencies (predecessor_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, successor_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, PRIMARY KEY (predecessor_id, successor_id), CHECK (predecessor_id != successor_id)) STRICT;`);
    this.db.exec('CREATE TABLE IF NOT EXISTS workspace_revision (id INTEGER PRIMARY KEY CHECK (id=1), revision INTEGER NOT NULL) STRICT; INSERT OR IGNORE INTO workspace_revision VALUES (1,0)');
    for (const table of ['projects','tasks','releases','subtasks','acceptance_criteria','task_dependencies']) for (const action of ['INSERT','UPDATE','DELETE']) this.db.exec(`CREATE TRIGGER IF NOT EXISTS revision_${table}_${action.toLowerCase()} AFTER ${action} ON ${table} BEGIN UPDATE workspace_revision SET revision=revision+1 WHERE id=1; END`);
+   this.db.exec('UPDATE tasks SET feature_id=NULL WHERE feature_id IS NOT NULL');
    if (this.db.prepare('PRAGMA foreign_key_check').get()) throw new Error('Die Datenbank enthält ungültige Verknüpfungen.');
    this.db.exec('COMMIT');
   } catch (error) { this.db.exec('ROLLBACK'); throw error; }
@@ -179,8 +180,8 @@ export class PlannerDatabase {
   });
   const existingIds = criteria.filter(c => c.id !== null).map(c => c.id);
   if (new Set(existingIds).size !== existingIds.length) throw new Error('Ein Akzeptanzkriterium wurde mehrfach angegeben.');
-  const featureId = fields.featureId === null ? null : identifier(fields.featureId);
-  if (featureId !== null && (featureId === id || fields.kind !== 'task' || projectId === null || !this.db.prepare(`SELECT 1 FROM tasks f JOIN projects p ON p.id=f.project_id WHERE f.id=? AND f.kind IN ('feature','fix') AND f.project_id=? AND p.kind='software'`).get(featureId,projectId))) throw new Error('Das Feature oder der Fix muss zum selben Softwareprojekt gehören.');
+  if (fields.featureId !== null) throw new Error('Aufgaben-Zuordnungen werden nicht mehr unterstützt.');
+  const featureId = null;
   const due=validDate(fields.dueDate);
   if (!Array.isArray(fields.predecessorIds)) throw new Error('Die Vorgänger sind ungültig.');
   const predecessors = [...new Set(fields.predecessorIds.map(identifier))];
@@ -194,7 +195,6 @@ export class PlannerDatabase {
    let taskId: number;
    if (id === null) { taskId=Number(this.db.prepare('INSERT INTO tasks (title,priority,description,project_id,due_date,status,completed,kind) VALUES (?,?,?,?,?,?,?,?)').run(name,rank,desc,projectId,due,'planned',0,fields.kind).lastInsertRowid); }
    else { taskId=identifier(id); if (!this.db.prepare('SELECT 1 FROM tasks WHERE id=?').get(taskId)) throw new Error('Die Aufgabe wurde nicht gefunden.'); }
-   if (id !== null && this.db.prepare("SELECT 1 FROM tasks WHERE feature_id=?").get(taskId) && (fields.kind === 'task' || !this.db.prepare("SELECT 1 FROM tasks WHERE id=? AND project_id=? AND kind IN ('feature','fix')").get(taskId,projectId))) throw new Error('Löse zuerst die Zuordnung der zugehörigen Aufgaben.');
    for (const criterion of criteria) if (criterion.id !== null && !this.db.prepare('SELECT 1 FROM acceptance_criteria WHERE id=? AND task_id=?').get(criterion.id, taskId)) throw new Error('Das Akzeptanzkriterium wurde nicht gefunden.');
    if (state !== 'done') this.ensureCanReopen(taskId);
    this.db.prepare('DELETE FROM task_dependencies WHERE successor_id=?').run(taskId);
@@ -223,14 +223,7 @@ export class PlannerDatabase {
    this.db.exec('RELEASE hq_operation');
   } catch (error) { this.db.exec('ROLLBACK TO hq_operation; RELEASE hq_operation'); throw error; }
  }
- assignFeature(taskId: number, featureId: number | null): void {
-  identifier(taskId);
-  if (featureId !== null) identifier(featureId);
-  const task = this.db.prepare("SELECT project_id AS projectId FROM tasks WHERE id=? AND kind='task'").get(taskId) as {projectId:number | null} | undefined;
-  if (!task) throw new Error('Die Aufgabe wurde nicht gefunden.');
-  if (featureId !== null && (task.projectId === null || !this.db.prepare("SELECT 1 FROM tasks f JOIN projects p ON p.id=f.project_id WHERE f.id=? AND f.kind IN ('feature','fix') AND f.project_id=? AND p.kind='software'").get(featureId,task.projectId))) throw new Error('Das Feature oder der Fix muss zum selben Softwareprojekt gehören.');
-  this.db.prepare('UPDATE tasks SET feature_id=? WHERE id=?').run(featureId,taskId);
- }
+
  completeTask(id: number, completed: boolean): void {
   identifier(id); if (typeof completed !== 'boolean') throw new Error('Dieser Aufgabenstatus ist ungültig.');
   if (completed) this.ensureCanComplete(id); else this.ensureCanReopen(id);

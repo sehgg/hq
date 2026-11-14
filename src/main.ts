@@ -40,7 +40,6 @@ function setupDatabase(): void {
   ipcMain.handle('release:publish', (_event, id: number, revision: number) => store.mutate(revision, () => { store.publishRelease(id); return store.read(); }));
   ipcMain.handle('project:save', (_event, id: number | null, fields: ProjectFields, revision: number) => store.mutate(revision, () => { store.saveProject(id, fields); return store.read(); }));
   ipcMain.handle('task:save', (_event, id: number | null, fields: TaskFields, revision: number) => store.mutate(revision, () => { store.saveTask(id, fields); return store.read(); }));
-  ipcMain.handle('task:assign-feature', (_event, id: number, featureId: number | null, revision: number) => store.mutate(revision, () => { store.assignFeature(id, featureId); return store.read(); }));
   ipcMain.handle('task:delete', (_event, id: number, revision: number) => store.mutate(revision, () => { store.deleteTask(id); return store.read(); }));
   ipcMain.handle('task:complete', (_event, id: number, completed: boolean, revision: number) => store.mutate(revision, () => { store.completeTask(id, completed); return store.read(); }));
   ipcMain.handle('subtask:add', (_event, id: number, value: string, revision: number) => store.mutate(revision, () => { store.addSubtask(id, value); return store.read(); }));
