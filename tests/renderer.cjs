@@ -32,6 +32,20 @@ function renderer(hq = { read: () => new Promise(() => {}) }) {
 }
 const task = (id, title, projectId, overrides = {}) => ({ id, title, projectId, priority:'normal', description:'', kind:'task', featureId:null, releaseId:null, targetVersion:null, criteria:[], dueDate:null, status:'planned', completed:false, predecessorIds:[], successorIds:[], ...overrides });
 
+test('task details show populated sections in the requested order', () => {
+  const {api,node} = renderer();
+  api.setWorkspace({projects:[{id:1,kind:'software'}], tasks:[task(1,'Fix',1,{kind:'fix',criteria:[{id:1,text:'Prüfen',completed:false}]})], subtasks:[], history:[]});
+  api.selectTask(1);
+  const html = node('#details').innerHTML;
+  const headings = ['Beschreibung','Akzeptanzkriterien','Fällig am','Status','Zielversion','Unteraufgaben','Vorgänger','Folgeaufgaben','Verlauf'];
+  const positions = headings.map(heading => html.indexOf(`<h3>${heading}</h3>`));
+  assert.ok(positions.every(position => position >= 0));
+  assert.deepEqual(positions, [...positions].sort((a,b) => a-b));
+  api.setWorkspace({projects:[], tasks:[task(2,'Aufgabe',null)], subtasks:[], history:[]});
+  api.selectTask(2);
+  assert.doesNotMatch(node('#details').innerHTML, /<h3>Akzeptanzkriterien<\/h3>/);
+});
+
 test('background reads refresh external changes but do not interrupt a text draft or replace a newer state', async () => {
   let current={revision:1,projects:[],tasks:[],subtasks:[],releases:[]};
   const {api,node,tick,document}=renderer({read:async()=>current});

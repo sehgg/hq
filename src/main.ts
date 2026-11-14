@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron';
 import { join } from 'node:path';
 import { PlannerDatabase } from './database';
 import type { ProjectFields, TaskFields, ReleaseStatus, HistoryKind } from './shared';
@@ -8,9 +8,9 @@ let window: BrowserWindow | null = null;
 
 function createWindow(): void {
   const isMac = process.platform === 'darwin';
+  const workArea = isMac ? screen.getPrimaryDisplay().workArea : null;
   const nextWindow = new BrowserWindow({
-    width: 1160,
-    height: 780,
+    ...(workArea ?? { width: 1160, height: 780 }),
     minWidth: 720,
     minHeight: 520,
     backgroundColor: '#101322',

@@ -30,6 +30,8 @@ Each project has a **Status** tab with a dated history of project, entry, and re
 
 Task, feature, and fix lists and the inbox show title, status, priority, and due date in columns. Each list contains entries from its own project or inbox. Completed entries and published releases are hidden by default and can be shown with the button at the right of the project tabs or above the inbox list. The choice lasts until the app restarts. Release overviews and details group assigned entries as Aufgaben, Features, and Fixes. **Ideen** and **Recherche** are placeholders. Drag either sidebar divider to change its width; the focused divider also accepts the arrow keys.
 
+On macOS, HQ opens at the size of the primary display's available work area. Task details show the description, any acceptance criteria, due date, status, target version for software projects, subtasks, dependencies, and history in that order.
+
 ## A typical CLI workflow
 
 After building the CLI as described below, put the resulting `hq` executable (`hq.exe` on Windows) on your `PATH`, or invoke it by its output path. The following example reads a project, creates a task, updates it, and marks it done. Use a project that exists in your own database and substitute the ID returned by `create`:
