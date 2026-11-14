@@ -108,3 +108,16 @@ test('simultaneous writers cannot silently overwrite each other',async t=>{
  await Promise.all(exits);
  assert.ok(['one','two'].includes(db.read().projects[0].description));
 });
+
+test('CLI mutations are recorded in history and failed writes leave no history', t => {
+ const {db,run}=fixture(t);
+ const created=run('create','--project','App','--title','CLI Eintrag');
+ assert.equal(created.status,0);
+ const id=created.body.data.id;
+ assert.equal(run('edit','--id',String(id),'--status','in_progress').status,0);
+ const history=db.read().history;
+ assert.ok(history.some(e=>e.entityKind==='task' && e.entityId===id && e.field==='Erstellt'));
+ assert.ok(history.some(e=>e.entityId===id && e.field==='Status' && e.oldValue==='planned' && e.newValue==='in_progress'));
+ assert.equal(run('edit','--id',String(id),'--due','2027-01-01').status,2);
+ assert.deepEqual(db.read().history,history);
+});

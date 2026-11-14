@@ -437,3 +437,11 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
 
 .task-panel { overflow-x: auto; }
 .task-panel > .list, .task-columns { min-width: 500px; }
+
+.history { margin: 20px 0; }
+.history-table { overflow-x: auto; }
+.history table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.history th, .history td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.history-form { display: flex; gap: 8px; align-items: end; margin-top: 12px; }
+.history-form label { flex: 1; }
+.history-form input { display: block; width: 100%; }

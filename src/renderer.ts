@@ -1,3 +1,4 @@
+type HistoryKind = import('./shared').HistoryKind;
 type Priority = import('./shared').Priority;
 type Project = import('./shared').Project;
 type Task = import('./shared').Task;
@@ -156,9 +157,9 @@ window.addEventListener('resize', () => { syncSidebarResize(); syncDetailsResize
 syncSidebarResize();
 
 const priorityNames: Record<Priority, string> = { high: 'Hoch', normal: 'Normal', low: 'Niedrig' };
-let workspace: Workspace = { revision: 0, projects: [], tasks: [], subtasks: [], releases: [] };
+let workspace: Workspace = { revision: 0, projects: [], tasks: [], subtasks: [], releases: [], history: [] };
 let view: View = 'inbox';
-let activeTab: TaskKind | 'releases' = 'task';
+let activeTab: TaskKind | 'releases' | 'history' = 'task';
 const showCompleted = new Set<string>();
 
 function visibilityKey(): string { return `${view}:${activeTab}`; }
@@ -266,7 +267,7 @@ function taskRow(task: Task): string {
 
 function taskPanel(project: Project | undefined): string {
   const projectId = project?.id ?? null;
-  const kind: TaskKind = project?.kind === 'software' && activeTab !== 'releases' ? activeTab : 'task';
+  const kind: TaskKind = project?.kind === 'software' && activeTab !== 'releases' && activeTab !== 'history' ? activeTab : 'task';
   const tasks = workspace.tasks.filter(task => task.kind === kind && task.projectId === projectId && (showCompleted.has(visibilityKey()) || !task.completed));
   return `<section class="panel task-panel" aria-label="${kind === 'feature' ? 'Features' : kind === 'fix' ? 'Fixes' : 'Aufgaben'}">
     ${visibilityButton()}
@@ -411,7 +412,7 @@ function render(): void {
     ? `<button type="button" class="button secondary" data-action="edit-project" data-id="${project.id}" aria-label="Projekt bearbeiten">B</button>`
     : '';
   const software = project?.kind === 'software';
-  const tabs = software ? `<nav class="task-tabs" aria-label="Projektbereich"><button type="button" class="task-tab" data-action="tab-task" aria-pressed="${activeTab === 'task'}">Aufgaben</button><button type="button" class="task-tab" data-action="tab-feature" aria-pressed="${activeTab === 'feature'}">Features</button><button type="button" class="task-tab" data-action="tab-fix" aria-pressed="${activeTab === 'fix'}">Fixes</button><button type="button" class="task-tab" data-action="tab-releases" aria-pressed="${activeTab === 'releases'}">Releases</button></nav>` : '';
+  const tabs = project ? `<nav class="task-tabs" aria-label="Projektbereich"><button type="button" class="task-tab" data-action="tab-history" aria-pressed="${activeTab === 'history'}">Status</button><button type="button" class="task-tab" data-action="tab-task" aria-pressed="${activeTab === 'task'}">Aufgaben</button>${software ? `<button type="button" class="task-tab" data-action="tab-feature" aria-pressed="${activeTab === 'feature'}">Features</button><button type="button" class="task-tab" data-action="tab-fix" aria-pressed="${activeTab === 'fix'}">Fixes</button><button type="button" class="task-tab" data-action="tab-releases" aria-pressed="${activeTab === 'releases'}">Releases</button>` : ''}</nav>` : '';
   content.innerHTML = `
     ${pageHeading(project?.title ?? 'Posteingang',
       project ? `Projekte / ${project.title}` : 'Posteingang',
@@ -419,9 +420,31 @@ function render(): void {
       editProject + (software && activeTab === 'releases' ? addButton('new-release', 'Neues Release') : addButton('new-task', software && activeTab === 'feature' ? 'Neues Feature' : software && activeTab === 'fix' ? 'Neuer Fix' : 'Neue Aufgabe')),
       project ? `<div class="project-priority"><span>Projektpriorität</span>${priorityBadge(project.priority, 'Projektpriorität')}</div>${project.dueDate ? `<div class="project-deadline">Projektfrist: ${escapeHtml(project.dueDate.split('-').reverse().join('.'))}</div>` : ''}` : '')}
     ${tabs}
-    ${software && activeTab === 'releases' ? releasePanel(project!) : taskPanel(project)}`;
+    ${project && activeTab === 'history' ? historyPanel('project', project.id) : software && activeTab === 'releases' ? releasePanel(project!) : taskPanel(project)}`;
 }
 
+
+function historyPanel(kind: HistoryKind, id: number): string {
+  const entries = (workspace.history ?? []).filter(entry => kind === 'project'
+    ? entry.projectId === id && (!entry.manual || (entry.entityKind === 'project' && entry.entityId === id))
+    : entry.entityKind === kind && entry.entityId === id);
+  const rows = entries.map(entry => `<tr><td>${escapeHtml(new Date(entry.date).toLocaleString('de-DE'))}</td><td>${kind === 'project' && entry.entityKind !== 'project' ? escapeHtml(entry.entityTitle) + ' · ' : ''}${escapeHtml(entry.field)}</td><td>${escapeHtml(entry.oldValue ?? '–')}</td><td>${escapeHtml(entry.newValue ?? '–')}</td></tr>`).join('');
+  return `<section class="history"><h3>Verlauf</h3><div class="history-table"><table><thead><tr><th>Datum</th><th>Änderung</th><th>Alter Wert</th><th>Neuer Wert</th></tr></thead><tbody>${rows || '<tr><td colspan="4">Noch keine Meldungen</td></tr>'}</tbody></table></div><form class="history-form" data-history-kind="${kind}" data-history-id="${id}"><label>Meldung <input name="note" maxlength="10000" required></label><button class="button compact" type="submit">Hinzufügen</button></form></section>`;
+}
+
+document.addEventListener('submit', async event => {
+  if (!(event.target instanceof HTMLFormElement) || !event.target.dataset.historyKind || saving) return;
+  event.preventDefault();
+  const form = event.target;
+  const input = form.querySelector<HTMLInputElement>('input[name="note"]');
+  if (!input) return;
+  saving = true;
+  try {
+    workspace = await window.hq.addHistoryNote(form.dataset.historyKind as HistoryKind, Number(form.dataset.historyId), input.value, workspace.revision);
+    render();
+  } catch (error) { announce(errorMessage(error), true); }
+  finally { saving = false; }
+});
 
 function renderDetails(): void {
   const task = workspace.tasks.find(item => item.id === selectedTaskId);
@@ -441,6 +464,7 @@ function renderDetails(): void {
     details.innerHTML = `<header class="details-header"><div class="details-heading"><p class="eyebrow">Release</p><h2>${escapeHtml(release.version)}</h2></div><div class="details-actions"><button type="button" class="button compact" data-action="edit-release" data-id="${release.id}" aria-label="Release bearbeiten">B</button><button type="button" class="button compact" data-action="close-details" aria-label="Details schließen">×</button></div></header>
       <div class="details-body"><section><h3>Status</h3><p>${releaseStatusNames[release.status]}</p></section><section><h3>Fällig am</h3><p>${release.dueDate ? escapeHtml(release.dueDate.split('-').reverse().join('.')) : 'Kein Datum'}</p></section>
       <section><h3>Aufgaben</h3><ul class="detail-list">${list('task')}</ul></section><section><h3>Features</h3><ul class="detail-list">${list('feature')}</ul></section><section><h3>Fixes</h3><ul class="detail-list">${list('fix')}</ul></section>
+      ${historyPanel('release', release.id)}
       ${release.published ? '' : `<button type="button" class="button secondary" data-action="publish-release" data-id="${release.id}">Veröffentlichen</button>`}
       </div>`;
     return;
@@ -456,6 +480,7 @@ function renderDetails(): void {
     <section><h3>Status</h3><p>${statusNames[task.status]}</p></section><section><h3>Fällig am</h3><p>${task.dueDate ? escapeHtml(task.dueDate.split('-').reverse().join('.')) : 'Kein Datum'}</p></section>
     <section><h3>Unteraufgaben</h3><ul class="detail-list">${subtasks.map(item => `<li><label><input type="checkbox" data-subtask="${item.id}" ${item.completed ? 'checked' : ''}> ${escapeHtml(item.title)}</label></li>`).join('')}</ul>
     <form id="subtask-form" class="subtask-form"><label class="sr-only" for="subtask-title">Neue Unteraufgabe</label><input id="subtask-title" maxlength="120" required placeholder="Neue Unteraufgabe"><button class="button compact" type="submit" aria-label="Unteraufgabe anlegen">+</button></form></section>
+    ${historyPanel('task', task.id)}
     <section><h3>Vorgänger</h3><ul class="detail-list">${links(task.predecessorIds)}</ul></section><section><h3>Folgeaufgaben</h3><ul class="detail-list">${links(task.successorIds)}</ul></section>
     </div>`;
 }
@@ -534,7 +559,7 @@ function openEditor(mode: EditorMode): void {
   const task = isTask ? workspace.tasks.find(item => item.id === mode.id) : undefined;
   const entry = isTask ? task : workspace.projects.find(item => item.id === mode.id);
   const currentProject = task ? task.projectId : (typeof view === 'number' ? view : null);
-  editorTaskKind = task?.kind ?? (isTask && activeTab !== 'releases' ? activeTab : 'task');
+  editorTaskKind = task?.kind ?? (isTask && activeTab !== 'releases' && activeTab !== 'history' ? activeTab : 'task');
   const isFeature = isTask && editorTaskKind !== 'task';
   const isFix = isTask && editorTaskKind === 'fix';
   document.querySelector<HTMLElement>('#project-kind-field')!.hidden = isTask;
@@ -681,6 +706,7 @@ document.addEventListener('click', event => {
       render();
       break;
     }
+    case 'tab-history': activeTab = 'history'; selectedTaskId = null; selectedReleaseId = null; render(); break;
     case 'tab-task': activeTab = 'task'; selectedTaskId = null; selectedReleaseId = null; render(); break;
     case 'tab-feature': activeTab = 'feature'; selectedTaskId = null; selectedReleaseId = null; render(); break;
     case 'tab-releases': activeTab = 'releases'; selectedTaskId = null; selectedReleaseId = null; render(); break;

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { PlannerDatabase } from './database';
-import type { ProjectFields, TaskFields, ReleaseStatus } from './shared';
+import type { ProjectFields, TaskFields, ReleaseStatus, HistoryKind } from './shared';
 
 const indexPath = join(__dirname, '../ui/index.html');
 let window: BrowserWindow | null = null;
@@ -34,6 +34,7 @@ function createWindow(): void {
 function setupDatabase(): void {
   const store = new PlannerDatabase(join(app.getPath('userData'), 'hq.sqlite'));
   ipcMain.handle('workspace:read', () => store.read());
+  ipcMain.handle('history:add-note', (_event, kind: HistoryKind, id: number, text: string, revision: number) => store.mutate(revision, () => { store.addHistoryNote(kind, id, text); return store.read(); }));
   ipcMain.handle('release:create', (_event, projectId: number, version: string, dueDate: string | null, revision: number) => store.mutate(revision, () => { store.createRelease(projectId, version, dueDate); return store.read(); }));
   ipcMain.handle('release:rename', (_event, id: number, version: string, dueDate: string | null, status: ReleaseStatus, revision: number) => store.mutate(revision, () => { store.renameRelease(id, version, dueDate, status); return store.read(); }));
   ipcMain.handle('release:delete', (_event, id: number, revision: number) => store.mutate(revision, () => { store.deleteRelease(id); return store.read(); }));

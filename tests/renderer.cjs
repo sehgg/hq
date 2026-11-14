@@ -27,7 +27,8 @@ function renderer(hq = { read: () => new Promise(() => {}) }) {
   vm.createContext(context);
   vm.runInContext(readFileSync('dist/renderer.js', 'utf8') + `\nglobalThis.testApi = { taskRow, taskPanel, openEditor, openDeleteDialog, render, showView, setTab: value => { activeTab = value; }, selectTask: id => { selectedTaskId = id; renderDetails(); }, updatePredecessorTasks, setWorkspace: value => { workspace = { releases: [], ...value }; }, getWorkspace: () => workspace, selected: () => [...selectedPredecessors] };`, context);
   const change = async target => { for (const handler of handlers.change ?? []) await handler({target}); };
-  return { api: context.testApi, node: selector => document.querySelector(selector), click, change, tick: () => tick(), document };
+  const submit = async target => { for (const handler of handlers.submit ?? []) await handler({target,preventDefault(){}}); };
+  return { api: context.testApi, submit, node: selector => document.querySelector(selector), click, change, tick: () => tick(), document };
 }
 const task = (id, title, projectId, overrides = {}) => ({ id, title, projectId, priority:'normal', description:'', kind:'task', featureId:null, releaseId:null, targetVersion:null, criteria:[], dueDate:null, status:'planned', completed:false, predecessorIds:[], successorIds:[], ...overrides });
 
@@ -476,4 +477,35 @@ test('overview visibility toggles completed entries and groups release entries b
   assert.match(node('#content').innerHTML,/<h3>Aufgaben<\/h3>[\s\S]*Fertig[\s\S]*<h3>Features<\/h3>[\s\S]*Funktion[\s\S]*<h3>Fixes<\/h3>[\s\S]*Fehler/);
   click('toggle-completed'); assert.match(node('#content').innerHTML,/Release v2 öffnen/);
   click('show-release',1); assert.match(node('#details').innerHTML,/Fertig/);
+});
+
+test('history appears on every project and in task and release details with scoped notes', () => {
+ const {api,node,click}=renderer();
+ const project={id:1,title:'Projekt',kind:'normal',priority:'normal',description:'',dueDate:null};
+ const history=[
+  {id:1,entityKind:'project',entityId:1,projectId:1,entityTitle:'Projekt',date:'2026-11-14T10:00:00Z',field:'Titel',oldValue:'Alt',newValue:'Neu',manual:false},
+  {id:2,entityKind:'task',entityId:2,projectId:1,entityTitle:'Aufgabe',date:'2026-11-14T10:00:00Z',field:'Meldung',oldValue:null,newValue:'Privat',manual:true}
+ ];
+ api.setWorkspace({projects:[project],tasks:[task(2,'Aufgabe',1)],subtasks:[],history});
+ api.showView(1); assert.match(node('#content').innerHTML,/tab-history/); click('tab-history');
+ assert.match(node('#content').innerHTML,/Alt/); assert.doesNotMatch(node('#content').innerHTML,/Privat/);
+ api.selectTask(2); assert.match(node('#details').innerHTML,/Privat/); assert.match(node('#details').innerHTML,/data-history-kind="task"/);
+});
+
+test('history notes submit the selected entity and revision through the bridge', async () => {
+ let saved;
+ const {api,submit,node}=renderer({read:()=>new Promise(()=>{}),addHistoryNote:async (...args)=>{
+  saved=args;
+  return {revision:8,projects:[],tasks:[],releases:[],subtasks:[],history:[]};
+ }});
+ api.setWorkspace({revision:7,projects:[],tasks:[],subtasks:[],history:[]});
+ const form=apiForm();
+ await submit(form);
+ assert.deepEqual(saved,['release',42,'Meldung',7]);
+ function apiForm() {
+  const element=node('#form');
+  element.dataset.historyKind='release'; element.dataset.historyId='42';
+  element.querySelector=()=>({value:'Meldung'});
+  return element;
+ }
 });

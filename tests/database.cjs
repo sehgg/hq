@@ -473,3 +473,38 @@ test('shortening a project deadline lists every conflicting entry and saves afte
   db.saveProject(project,update); assert.equal(db.read().projects[0].dueDate,'2026-11-30');
   db.saveProject(project,{...update,dueDate:null}); assert.equal(db.read().projects[0].dueDate,null); db.close();
 });
+
+test('history persists precise changes, notes, moves and deletions atomically', t => {
+  const file = tempDatabase(t);
+  let db = new PlannerDatabase(file);
+  const mutate = fn => db.mutate(db.read().revision, fn);
+  const project = title => mutate(() => db.saveProject(null,{title,kind:'software',priority:'normal',description:'',dueDate:null}));
+  project('Eins'); project('Zwei');
+  const [two, one] = db.read().projects;
+  mutate(() => db.createRelease(one.id,'v1'));
+  const release = db.read().releases[0];
+  mutate(() => db.saveTask(null,fields('Arbeit',{projectId:one.id,kind:'feature',releaseId:release.id,criteria:[{id:null,text:'Prüfen',completed:false}]})));
+  const task = find(db,'Arbeit');
+  mutate(() => db.addSubtask(task.id,'Teil'));
+  const sub = db.read().subtasks[0];
+  mutate(() => db.completeSubtask(sub.id,true));
+  mutate(() => db.completeCriterion(task.criteria[0].id,true));
+  mutate(() => db.saveTask(task.id,fields('Arbeit',{projectId:two.id,kind:'feature',criteria:[{...task.criteria[0],completed:true}]})));
+  mutate(() => db.addHistoryNote('task',task.id,'Nur hier'));
+  mutate(() => db.publishRelease(release.id));
+  const beforeFailure = db.read();
+  assert.throws(() => mutate(() => { db.deleteTask(task.id); throw new Error('rollback'); }),/rollback/);
+  assert.deepEqual(db.read(),beforeFailure);
+  mutate(() => db.deleteTask(task.id));
+  mutate(() => db.saveTask(null,fields('Neu',{projectId:two.id})));
+  assert.notEqual(find(db,'Neu').id,task.id);
+  const entries = db.read().history;
+  assert.ok(entries.some(e => e.entityId===task.id && e.field==='Unteraufgabe' && e.oldValue==='Teil (offen)' && e.newValue==='Teil (erledigt)'));
+  assert.ok(entries.some(e => e.entityId===task.id && e.field==='Akzeptanzkriterium' && e.newValue==='Prüfen (erledigt)'));
+  assert.ok(entries.some(e => e.entityKind==='task' && e.entityId===task.id && e.field==='Projekt'));
+  assert.ok(entries.some(e => e.projectId===one.id && e.field.includes('Projekt')));
+  assert.ok(entries.some(e => e.entityKind==='release' && e.field==='Status' && e.newValue==='published'));
+  assert.ok(entries.some(e => e.entityKind==='task' && e.field==='Gelöscht'));
+  assert.ok(entries.some(e => e.manual && e.entityId===task.id && e.newValue==='Nur hier'));
+  db.close(); db = new PlannerDatabase(file); assert.deepEqual(db.read().history,entries); db.close();
+});

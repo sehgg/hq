@@ -11,9 +11,12 @@ export interface Project extends ProjectFields { id: number }
 export interface Task extends TaskFields { targetVersion: string | null; id: number; completed: boolean; successorIds: number[] }
 export interface Subtask { id: number; taskId: number; title: string; completed: boolean }
 export interface Release { id: number; projectId: number; version: string; dueDate: string | null; status: ReleaseStatus; published: boolean }
-export interface Workspace { revision: number; releases: Release[]; projects: Project[]; tasks: Task[]; subtasks: Subtask[] }
+export type HistoryKind = 'project' | 'task' | 'release';
+export interface HistoryEntry { id: number; entityKind: HistoryKind; entityId: number; projectId: number | null; entityTitle: string; date: string; field: string; oldValue: string | null; newValue: string | null; manual: boolean }
+export interface Workspace { history: HistoryEntry[]; revision: number; releases: Release[]; projects: Project[]; tasks: Task[]; subtasks: Subtask[] }
 export interface HqApi {
  read(): Promise<Workspace>;
+ addHistoryNote(kind: HistoryKind, id: number, text: string, revision: number): Promise<Workspace>;
  createRelease(projectId: number, version: string, dueDate: string | null, revision: number): Promise<Workspace>;
  renameRelease(id: number, version: string, dueDate: string | null, status: ReleaseStatus, revision: number): Promise<Workspace>;
  publishRelease(id: number, revision: number): Promise<Workspace>;

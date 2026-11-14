@@ -3,6 +3,7 @@ import type { HqApi } from './shared';
 
 const api: HqApi = {
   read: () => ipcRenderer.invoke('workspace:read'),
+  addHistoryNote: (kind, id, text, revision) => ipcRenderer.invoke('history:add-note', kind, id, text, revision),
   createRelease: (projectId, version, dueDate, revision) => ipcRenderer.invoke('release:create', projectId, version, dueDate, revision),
   renameRelease: (id, version, dueDate, status, revision) => ipcRenderer.invoke('release:rename', id, version, dueDate, status, revision),
   deleteRelease: (id, revision) => ipcRenderer.invoke('release:delete', id, revision),
