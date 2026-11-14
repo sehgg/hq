@@ -32,6 +32,8 @@ Task, feature, and fix lists and the inbox show title, status, priority, and due
 
 On macOS, HQ opens at the size of the primary display's available work area. Task details show the description, any acceptance criteria, due date, status, target version for software projects, subtasks, dependencies, and history in that order.
 
+The editors for tasks, features, fixes, releases, and projects are up to 750 px wide and fit within narrower windows. In an entry editor with no assigned predecessors, the **Vorgänger** section shows the add button without an empty-state message.
+
 ## A typical CLI workflow
 
 After building the CLI as described below, put the resulting `hq` executable (`hq.exe` on Windows) on your `PATH`, or invoke it by its output path. The following example reads a project, creates a task, updates it, and marks it done. Use a project that exists in your own database and substitute the ID returned by `create`:
@@ -49,9 +51,9 @@ The task must have no open predecessors or subtasks before `done` succeeds. For 
 
 For implementation details, see [Architecture](docs/ARCHITECTURE.md); for development and checks, see [Contributing](CONTRIBUTING.md). HQ is available under the [MIT license](LICENSE).
 
-## Upgrading to v0.2.0
+## Upgrading to v0.2.2
 
-Replace both the desktop app and any installed `hq` CLI executable with v0.2.0. The updated app and CLI share the existing database and record changes in the new status history. Earlier changes cannot be reconstructed, and older CLI executables do not record history.
+Replace the desktop app and any installed `hq` CLI executable with v0.2.2. Both continue to use your existing SQLite database. Status history was introduced in v0.2.0. Changes made by earlier versions are unavailable in the history.
 
 ## Upgrading from v0.1.0
 
