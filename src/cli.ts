@@ -79,23 +79,41 @@ function fields(base:TaskFields):TaskFields {
  };
 }
 function taskDetail(w:Workspace,t:Task) { return {...t,predecessorIds:[...t.predecessorIds].sort((a,b)=>a-b),successorIds:[...t.successorIds].sort((a,b)=>a-b),subtasks:w.subtasks.filter(s=>s.taskId===t.id).sort((a,b)=>a.id-b.id)}; }
-function render(data:unknown):void {
- if (json) { process.stdout.write(JSON.stringify({ok:true,data})+'\n'); return; }
- if (Array.isArray(data)) { if (!data.length) { console.log('Keine Einträge gefunden.'); return; } for (const item of data) console.log(`#${item.id} ${item.title ?? item.version} ${item.status ? `[${item.status}]` : ''}`.trim()); return; }
- if (data && typeof data==='object' && 'title' in data) {
-  if (!('status' in data)) {
-   const project=data as Workspace['projects'][number];
-   console.log(`#${project.id} ${project.title}\nTyp: ${project.kind} · Priorität: ${project.priority}\nProjektfrist: ${project.dueDate ?? '–'}\nBeschreibung: ${project.description || '–'}`);
-   return;
-  }
-  const item=data as Task & {subtasks?:{id:number;title:string;completed:boolean}[]};
+function renderProject(project: Workspace['projects'][number]): void {
+  console.log(`#${project.id} ${project.title}\nTyp: ${project.kind} · Priorität: ${project.priority}\nProjektfrist: ${project.dueDate ?? '–'}\nBeschreibung: ${project.description || '–'}`);
+}
+
+function renderTask(item: ReturnType<typeof taskDetail>): void {
   console.log(`#${item.id} ${item.title}\nTyp: ${item.kind} · Status: ${item.status} · Priorität: ${item.priority}\nFällig: ${item.dueDate ?? '–'} · Release: ${item.releaseId ?? '–'}\nBeschreibung: ${item.description || '–'}\nVorgänger: ${item.predecessorIds?.join(', ') || '–'}`);
   for (const sub of item.subtasks ?? []) console.log(`  [${sub.completed?'x':' '}] Unteraufgabe #${sub.id}: ${sub.title}`);
   for (const criterion of item.criteria ?? []) console.log(`  [${criterion.completed?'x':' '}] Kriterium #${criterion.id}: ${criterion.text}`);
-  return;
- }
- console.log(JSON.stringify(data,null,2));
 }
+
+function render(data: unknown): void {
+  if (json) {
+    process.stdout.write(JSON.stringify({ok: true, data}) + '\n');
+    return;
+  }
+  if (Array.isArray(data)) {
+    if (!data.length) console.log('Keine Einträge gefunden.');
+    for (const item of data)
+      console.log(`#${item.id} ${item.title ?? item.version} ${item.status ? `[${item.status}]` : ''}`.trim());
+    return;
+  }
+  if (data && typeof data === 'object') {
+    if ('taskId' in data && 'title' in data && 'id' in data && 'completed' in data) {
+      console.log(`  [${data.completed ? 'x' : ' '}] Unteraufgabe #${data.id}: ${data.title}`);
+      return;
+    }
+    if ('title' in data) {
+      if ('status' in data) renderTask(data as ReturnType<typeof taskDetail>);
+      else renderProject(data as Workspace['projects'][number]);
+      return;
+    }
+  }
+  console.log(JSON.stringify(data, null, 2));
+}
+
 function listTasks(workspace: Workspace): void {
   const term = str('title')?.toLocaleLowerCase('de');
   const matchesTitle = (task: Task) => !term || task.title.toLocaleLowerCase('de').includes(term);

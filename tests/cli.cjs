@@ -12,12 +12,15 @@ function fixture(t) {
  t.after(()=>{db.close();rmSync(dir,{recursive:true,force:true});});
  db.saveProject(null,{title:'App',kind:'software',priority:'normal',description:'',dueDate:'2026-11-30'});
  db.createRelease(db.read().projects[0].id,'v1');
- const run=(...args)=>{
+ const invoke=(...args)=>{
   const binary=process.env.HQ_CLI_EXEC;
-  const r=spawnSync(binary || process.execPath,[...(binary ? [] : ['dist/cli.js']),...args,'--db',path,'--json'],{encoding:'utf8',cwd:binary ? dir : undefined,env:binary ? {...process.env,PATH:process.platform==='win32' ? process.env.PATH : '/usr/bin:/bin'} : {...process.env,NODE_NO_WARNINGS:'1'}});
+  return spawnSync(binary || process.execPath,[...(binary ? [] : ['dist/cli.js']),...args,'--db',path],{encoding:'utf8',cwd:binary ? dir : undefined,env:binary ? {...process.env,PATH:process.platform==='win32' ? process.env.PATH : '/usr/bin:/bin'} : {...process.env,NODE_NO_WARNINGS:'1'}});
+ };
+ const run=(...args)=>{
+  const r=invoke(...args,'--json');
   return {status:r.status,body:JSON.parse(r.status===0?r.stdout:r.stderr),stdout:r.stdout};
  };
- return {db,path,run};
+ return {db,path,run,invoke};
 }
 
 test('CLI search, assignment, editing and completion rules share the database and stable JSON contract',t=>{
@@ -120,4 +123,16 @@ test('CLI mutations are recorded in history and failed writes leave no history',
  assert.ok(history.some(e=>e.entityId===id && e.field==='Status' && e.oldValue==='planned' && e.newValue==='in_progress'));
  assert.equal(run('edit','--id',String(id),'--due','2027-01-01').status,2);
  assert.deepEqual(db.read().history,history);
+});
+
+test('subtask completion prints the subtask and its completion state in text mode', t => {
+ const {run, invoke} = fixture(t);
+ const task = run('create', '--project', 'App', '--title', 'Aufgabe').body.data;
+ const {subtasks: [subtask]} = run('subtask-add', '--id', String(task.id), '--text', 'Datei prüfen').body.data;
+ const done = invoke('subtask-done', '--subtask', String(subtask.id));
+ assert.equal(done.status, 0, done.stderr);
+ assert.equal(done.stdout.trim(), `[x] Unteraufgabe #${subtask.id}: Datei prüfen`);
+ const reopened = invoke('subtask-done', '--subtask', String(subtask.id), '--undo');
+ assert.equal(reopened.status, 0, reopened.stderr);
+ assert.equal(reopened.stdout.trim(), `[ ] Unteraufgabe #${subtask.id}: Datei prüfen`);
 });
