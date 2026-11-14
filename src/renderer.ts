@@ -680,7 +680,7 @@ function renderSelectedPredecessors(): void {
   predecessorField.innerHTML = selected.length ? selected.map(task => {
     const project = workspace.projects.find(item => item.id === task.projectId);
     return `<div class="selected-predecessor"><span>${escapeHtml(task.title)} <span class="muted">· ${escapeHtml(project?.title ?? 'Posteingang')}</span></span><button type="button" class="button compact" data-remove-predecessor="${task.id}" aria-label="${escapeHtml(task.title)} als Vorgänger entfernen">−</button></div>`;
-  }).join('') : '<span class="muted">Keine Vorgänger</span>';
+  }).join('') : '';
 }
 function updatePredecessorTasks(): void {
   const selectedProject = predecessorProject.value;
