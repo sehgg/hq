@@ -234,7 +234,7 @@ function pageHeading(title: string, path: string, description: string, actions: 
       <div class="prompt-heading">
         <span class="prompt-mark" aria-hidden="true">&gt;</span>
         <h1 tabindex="-1">${escapeHtml(title)}</h1>
-        <p class="subtitle">${description}</p>
+        ${description ? `<p class="subtitle">${description}</p>` : ''}
         ${extra}
       </div>
       <div class="head-actions">${actions}</div>
@@ -391,7 +391,7 @@ function render(): void {
   }
   if (view === 'projects') {
     content.innerHTML = `
-      ${pageHeading('Projekte', 'Projekte', 'Plane Vorhaben und entscheide, was Vorrang hat.', addButton('new-project', 'Neues Projekt'))}
+      ${pageHeading('Projekte', 'Projekte', '', addButton('new-project', 'Neues Projekt'))}
       <section class="panel" aria-labelledby="project-heading">
         <header class="panel-header">
           <h2 id="project-heading">Meine Projekte</h2>
@@ -414,7 +414,7 @@ function render(): void {
   content.innerHTML = `
     ${pageHeading(project?.title ?? 'Posteingang',
       project ? `Projekte / ${project.title}` : 'Posteingang',
-      project ? (project.description ? escapeHtml(project.description).replaceAll('\n', '<br>') : 'Deine Aufgaben für dieses Projekt.') : 'Ein Ort für alle Aufgaben ohne Projekt.',
+      project ? (project.description ? escapeHtml(project.description).replaceAll('\n', '<br>') : 'Deine Aufgaben für dieses Projekt.') : '',
       editProject + (software && activeTab === 'releases' ? addButton('new-release', 'Neues Release') : addButton('new-task', software && activeTab === 'feature' ? 'Neues Feature' : software && activeTab === 'fix' ? 'Neuer Fix' : 'Neue Aufgabe')),
       project ? `<div class="project-priority"><span>Projektpriorität</span>${priorityBadge(project.priority, 'Projektpriorität')}</div>${project.dueDate ? `<div class="project-deadline">Projektfrist: ${escapeHtml(project.dueDate.split('-').reverse().join('.'))}</div>` : ''}` : '')}
     ${tabs}
