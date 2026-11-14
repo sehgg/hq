@@ -26,7 +26,7 @@ On Apple Silicon the app is `out/HQ-darwin-arm64/HQ.app`; on Intel macOS it is `
 3. Select the task to open its details on the right. Use **[ B ]** to edit it and add or check subtasks in the details. A task cannot be completed while a subtask or predecessor remains open.
 4. In a software project, use the **Features**, **Fixes**, and **Releases** tabs to plan work. Assign an entry to a release in its editor. A release can be published once all its assigned tasks, features, and fixes are done.
 
-Each project has a **Status** tab with a dated history of project, entry, and release changes. Task and release details show their own history. Add a manual note in the relevant history. History begins when this version is installed and includes changes made through the desktop app and CLI. Creating a task, feature, fix, or release adds a single creation entry; later edits are recorded separately.
+Each project has a **Status** tab with a dated history of project, entry, and release changes. Task and release details show their own history. Add a manual note in the relevant history. History begins after upgrading and includes changes made through the v0.2.0 desktop app and CLI. Creating a task, feature, fix, or release adds a single creation entry; later edits are recorded separately.
 
 Task, feature, and fix lists and the inbox show title, status, priority, and due date in columns. Each list contains entries from its own project or inbox. Completed entries and published releases are hidden by default and can be shown with the button at the right of the project tabs or above the inbox list. The choice lasts until the app restarts. Release overviews and details group assigned entries as Aufgaben, Features, and Fixes. **Ideen** and **Recherche** are placeholders. Drag either sidebar divider to change its width; the focused divider also accepts the arrow keys.
 
@@ -47,7 +47,11 @@ The task must have no open predecessors or subtasks before `done` succeeds. For 
 
 For implementation details, see [Architecture](docs/ARCHITECTURE.md); for development and checks, see [Contributing](CONTRIBUTING.md). HQ is available under the [MIT license](LICENSE).
 
-## Upgrading to v0.1.1
+## Upgrading to v0.2.0
+
+Replace both the desktop app and any installed `hq` CLI executable with v0.2.0. The updated app and CLI share the existing database and record changes in the new status history. Earlier changes cannot be reconstructed, and older CLI executables do not record history.
+
+## Upgrading from v0.1.0
 
 When an existing database is opened by v0.1.1, HQ removes task assignments to features and fixes. The tasks, features, fixes, release assignments, and predecessor relationships remain available. The CLI option `--feature` is no longer supported.
 
