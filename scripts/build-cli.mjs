@@ -1,5 +1,5 @@
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 if (!['darwin','win32'].includes(process.platform)) throw new Error('Build the CLI on macOS or Windows for its native platform.');
@@ -14,7 +14,7 @@ const main=join(out,'bundle.cjs');
 writeFileSync(main,`(function(){process.removeAllListeners('warning');const db={exports:{}};(function(require,module,exports){\n${database}\n})(require,db,db.exports);const localRequire=(id)=>id==='./database'?db.exports:require(id);(function(require,module,exports){\n${cli}\n})(localRequire,{exports:{}},{});})();\n`);
 const config=join(out,'sea.json'), blob=join(out,'sea.blob');
 const output=join(out,process.platform==='win32'?'hq.exe':'hq');
-writeFileSync(config,JSON.stringify({main,output:blob,disableExperimentalSEAWarning:true}));
+writeFileSync(config,JSON.stringify({main:relative(process.cwd(),main),output:relative(process.cwd(),blob),disableExperimentalSEAWarning:true}));
 function run(command,args) { const result=spawnSync(command,args,{stdio:'inherit'}); if (result.status!==0) throw new Error(`Command failed: ${command}`); }
 run(runtime,[`--experimental-sea-config=${config}`]);
 copyFileSync(runtime,output); chmodSync(output,0o755);

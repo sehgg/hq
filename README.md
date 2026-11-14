@@ -45,6 +45,10 @@ The task must have no open predecessors or subtasks before `done` succeeds. For 
 
 For implementation details, see [Architecture](docs/ARCHITECTURE.md); for development and checks, see [Contributing](CONTRIBUTING.md). HQ is available under the [MIT license](LICENSE).
 
+## Upgrading to v0.1.1
+
+When an existing database is opened by v0.1.1, HQ removes task assignments to features and fixes. The tasks, features, fixes, release assignments, and predecessor relationships remain available. The CLI option `--feature` is no longer supported.
+
 ## Deleting entries
 
 Open the editor for an existing task, feature, fix, or release and choose **Löschen**. Confirming permanently deletes a task, feature, or fix along with its subtasks, acceptance criteria, and dependency links. Deleting a release removes its assignments. Linked entries remain in place.
