@@ -476,7 +476,9 @@ test('overview visibility toggles completed entries and groups release entries b
   api.showView('inbox'); assert.match(node('#content').innerHTML,/<div class="overview-toolbar inbox-toolbar"><button[^>]*data-action="toggle-completed"[\s\S]*<\/div>\s*<section class="panel task-panel"/);
   assert.doesNotMatch(node('#content').innerHTML,/Inbox fertig/); click('toggle-completed'); assert.match(node('#content').innerHTML,/Inbox fertig/);
   api.showView(1); click('tab-releases');
-  assert.match(node('#content').innerHTML, /<\/nav><button[^>]*data-action="toggle-completed"[\s\S]*<\/div>\s*<section class="panel"/);
+  assert.match(node('#content').innerHTML, /<\/nav><button[^>]*data-action="toggle-completed"[\s\S]*<\/div>\s*<section class="panel release-panel"/);
+  assert.doesNotMatch(node('#content').innerHTML,/<h2[^>]*>Releases<\/h2>/);
+  assert.match(node('#content').innerHTML,/<section class="panel release-panel" aria-label="Releases">/);
   assert.doesNotMatch(node('#content').innerHTML,/Release v2 öffnen/);
   assert.match(node('#content').innerHTML,/<h3>Aufgaben<\/h3>[\s\S]*Fertig[\s\S]*<h3>Features<\/h3>[\s\S]*Funktion[\s\S]*<h3>Fixes<\/h3>[\s\S]*Fehler/);
   click('toggle-completed'); assert.match(node('#content').innerHTML,/Release v2 öffnen/);

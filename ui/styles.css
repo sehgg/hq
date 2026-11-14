@@ -221,6 +221,7 @@ h2 { margin-bottom: 0; font-size: 14px; }
 }
 .panel-header h2 { color: var(--accent-primary); font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
 .panel-meta { color: var(--muted); font-size: 11px; }
+.release-panel .panel-meta { margin-left: auto; }
 .list { list-style: none; padding: 0; margin: 0; }
 .list li + li { border-top: 1px solid var(--border); }
 .task-row, .task-columns {
