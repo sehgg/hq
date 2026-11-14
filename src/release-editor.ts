@@ -56,7 +56,7 @@ function createReleaseEditor(context: DialogContext & { selectedReleaseId: numbe
         if (context.saving)
             event.preventDefault();
     });
-    releaseForm.addEventListener('submit', async (event) => {
+    async function saveReleaseChanges(event: SubmitEvent): Promise<void> {
         event.preventDefault();
         if (context.saving || typeof context.view !== 'number')
             return;
@@ -78,7 +78,8 @@ function createReleaseEditor(context: DialogContext & { selectedReleaseId: numbe
             context.saving = false;
             saveRelease.disabled = false;
         }
-    });
+    }
+    releaseForm.addEventListener('submit', saveReleaseChanges);
     function openPublishDialog(id: number): void {
         const release = context.workspace.releases.find(item => item.id === id && !item.published);
         if (!release)
@@ -98,7 +99,7 @@ function createReleaseEditor(context: DialogContext & { selectedReleaseId: numbe
         if (context.saving)
             event.preventDefault();
     });
-    confirmPublish.addEventListener('click', async () => {
+    async function publishRelease(): Promise<void> {
         if (context.saving || pendingReleaseId === null)
             return;
         context.saving = true;
@@ -119,7 +120,8 @@ function createReleaseEditor(context: DialogContext & { selectedReleaseId: numbe
             context.saving = false;
             confirmPublish.disabled = false;
         }
-    });
+    }
+    confirmPublish.addEventListener('click', publishRelease);
     function openDeleteReleaseDialog(id: number): void {
         const release = context.workspace.releases.find(item => item.id === id);
         if (!release)
@@ -138,7 +140,7 @@ function createReleaseEditor(context: DialogContext & { selectedReleaseId: numbe
         if (context.saving)
             event.preventDefault();
     });
-    confirmDeleteRelease.addEventListener('click', async () => {
+    async function deleteRelease(): Promise<void> {
         if (context.saving || pendingDeleteReleaseId === null)
             return;
         context.saving = true;
@@ -164,7 +166,8 @@ function createReleaseEditor(context: DialogContext & { selectedReleaseId: numbe
             confirmDeleteRelease.disabled = false;
             cancelDeleteRelease.disabled = false;
         }
-    });
+    }
+    confirmDeleteRelease.addEventListener('click', deleteRelease);
 
     return { open: openReleaseDialog, openPublish: openPublishDialog };
 }
