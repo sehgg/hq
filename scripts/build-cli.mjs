@@ -9,10 +9,10 @@ if (version.status!==0 || Number(version.stdout.trim().replace(/^v/, '').split('
 const out=resolve('out',`cli-${process.platform}-${process.arch}`);
 mkdirSync(out,{recursive:true});
 const main = join(out, 'bundle.cjs');
-const moduleNames = ['database-migrations', 'database-history', 'database', 'cli'];
+const moduleNames = ['database/migrations', 'database/history', 'database/database', 'database/index', 'cli'];
 const factories = moduleNames.map(name => {
   const source = readFileSync(join('dist', `${name}.js`), 'utf8');
-  return `  './${name}': (require, module, exports) => {\n${source}\n  },`;
+  return `  '${name}': (require, module, exports) => {\n${source}\n  },`;
 });
 writeFileSync(main, `
 process.removeAllListeners('warning');
@@ -20,15 +20,21 @@ const factories = {
 ${factories.join('\n')}
 };
 const cache = new Map();
-function localRequire(id) {
-  if (!Object.hasOwn(factories, id)) return require(id);
+const { posix } = require('node:path');
+function load(id) {
   if (cache.has(id)) return cache.get(id).exports;
+  if (!Object.hasOwn(factories, id)) throw new Error('Missing bundled CLI module: ' + id);
   const module = { exports: {} };
   cache.set(id, module);
+  const localRequire = specifier => {
+    if (!specifier.startsWith('.')) return require(specifier);
+    const target = posix.join(posix.dirname(id), specifier);
+    return load(Object.hasOwn(factories, target) ? target : posix.join(target, 'index'));
+  };
   factories[id](localRequire, module, module.exports);
   return module.exports;
 }
-localRequire('./cli');
+load('cli');
 `);
 const config=join(out,'sea.json'), blob=join(out,'sea.blob');
 const output=join(out,process.platform==='win32'?'hq.exe':'hq');

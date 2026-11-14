@@ -11,8 +11,8 @@ HQ is an Electron desktop application and a local CLI built from the same TypeSc
 | `src/entry-editor.ts`, `src/release-editor.ts`, `src/note-editor.ts` | Set up dialog events and keep each editor’s draft local. Both editors use the same note editor factory. |
 | `src/preload.ts`, `src/shared.ts` | Exposes the typed `window.hq` bridge through Electron's context bridge; shared types define workspaces and fields. |
 | `src/main.ts` | Creates the Electron window, opens the user database, and implements IPC handlers. |
-| `src/database.ts` | `PlannerDatabase`: SQLite queries, transactions, and shared validation and completion rules. |
-| `src/database-migrations.ts`, `src/database-history.ts` | Upgrade the SQLite schema and record changes between workspace snapshots. |
+| `src/database/index.ts`, `src/database/database.ts` | Public entry point and implementation of `PlannerDatabase`: SQLite queries, transactions, and shared validation and completion rules. |
+| `src/database/migrations.ts`, `src/database/history.ts` | Upgrade the SQLite schema and record changes between workspace snapshots. |
 | `src/cli.ts` | Parses CLI arguments, selects entries, formats human or JSON output, and calls `PlannerDatabase`. |
 | `scripts/` | Packages the desktop application and builds the CLI single executable. |
 | `tests/` | Database, CLI, and renderer tests, including concurrent writers. |

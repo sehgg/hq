@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
-import { recordChanges } from './database-history';
-import { migrateDatabase } from './database-migrations';
-import type { Priority, Project, ProjectFields, Task, TaskFields, TaskStatus, Subtask, Workspace, Release, ReleaseStatus, HistoryKind, HistoryEntry } from './shared';
+import { recordChanges } from './history';
+import { migrateDatabase } from './migrations';
+import type { Priority, Project, ProjectFields, Task, TaskFields, TaskStatus, Subtask, Workspace, Release, ReleaseStatus, HistoryKind, HistoryEntry } from '../shared';
 const byPriority = "CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END";
 function title(value: unknown): string {
     if (typeof value !== 'string' || !value.trim() || value.trim().length > 120)
@@ -168,7 +168,7 @@ export class PlannerDatabase {
             VALUES (?,?,?,?,?,?,1)
         `).run(kind, id, entity.projectId, entity.name, 'Meldung', note);
     }
-    saveHistoryNotes(kind: HistoryKind, id: number, notes: import('./shared').NoteFields[]): void {
+    saveHistoryNotes(kind: HistoryKind, id: number, notes: import('../shared').NoteFields[]): void {
         if (!Array.isArray(notes))
             throw new Error('Die Meldungen sind ungültig.');
         const existing = this.db.prepare(`

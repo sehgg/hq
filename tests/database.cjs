@@ -4,7 +4,7 @@ const { mkdtempSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
-const { PlannerDatabase } = require('../dist/database.js');
+const { PlannerDatabase } = require('../dist/database');
 
 const fields = (title, extra = {}) => ({ title, priority: 'normal', description: '', kind: 'task', featureId: null, releaseId: null, criteria: [], projectId: null, dueDate: null, status: 'planned', predecessorIds: [], ...extra });
 function tempDatabase(t, legacy = false) {

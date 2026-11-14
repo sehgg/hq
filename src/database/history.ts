@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { HistoryKind, Workspace } from './shared';
+import type { HistoryKind, Workspace } from '../shared';
 
 export function recordChanges(db: DatabaseSync, before: Workspace, after: Workspace): void {
     const insert = db.prepare('INSERT INTO history (entity_kind,entity_id,project_id,entity_title,field,old_value,new_value) VALUES (?,?,?,?,?,?,?)');
