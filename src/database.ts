@@ -154,12 +154,13 @@ export class PlannerDatabase {
   };
   compare('project',before.projects,after.projects,[['title','Titel'],['description','Beschreibung'],['priority','Priorität'],['kind','Projekttyp'],['dueDate','Fälligkeit']]);
   compare('release',before.releases,after.releases,[['version','Version'],['dueDate','Fälligkeit'],['status','Status']]);
+  const existingTaskIds = new Set(before.tasks.map(task => task.id));
   const childChanges = (label: string, oldChildren: {id:number; taskId:number; text:string; completed:boolean}[], newChildren: {id:number; taskId:number; text:string; completed:boolean}[]) => {
    for (const id of new Set([...oldChildren.map(child => child.id), ...newChildren.map(child => child.id)])) {
     const old = oldChildren.find(child => child.id === id), next = newChildren.find(child => child.id === id);
     const child = next ?? old!;
     const task = after.tasks.find(item => item.id === child.taskId) ?? before.tasks.find(item => item.id === child.taskId);
-    if (!task) continue;
+    if (!task || !existingTaskIds.has(child.taskId)) continue;
     const format = (entry: typeof child | undefined) => entry ? `${entry.text} (${entry.completed ? 'erledigt' : 'offen'})` : null;
     if (format(old) !== format(next)) emit('task',task.id,task.projectId,task.title,label,format(old),format(next));
    }
@@ -173,8 +174,10 @@ export class PlannerDatabase {
    subtasks: workspace.subtasks.filter(subtask => subtask.taskId === task.id).map(({title,completed}) => ({title,completed})),
    projectName: workspace.projects.find(project => project.id === task.projectId)?.title ? `${workspace.projects.find(project => project.id === task.projectId)!.title} (#${task.projectId})` : (task.projectId === null ? 'Posteingang' : String(task.projectId)),
    releaseName: workspace.releases.find(release => release.id === task.releaseId)?.version ?? null,
-   predecessorNames: [...task.predecessorIds].sort((a,b) => a-b).map(id => workspace.tasks.find(item => item.id === id)?.title ?? String(id)),
-   successorNames: [...task.successorIds].sort((a,b) => a-b).map(id => workspace.tasks.find(item => item.id === id)?.title ?? String(id)),
+   predecessorIds: task.predecessorIds.filter(id => existingTaskIds.has(id)).sort((a,b) => a-b),
+   successorIds: task.successorIds.filter(id => existingTaskIds.has(id)).sort((a,b) => a-b),
+   predecessorNames: task.predecessorIds.filter(id => existingTaskIds.has(id)).sort((a,b) => a-b).map(id => workspace.tasks.find(item => item.id === id)?.title ?? String(id)),
+   successorNames: task.successorIds.filter(id => existingTaskIds.has(id)).sort((a,b) => a-b).map(id => workspace.tasks.find(item => item.id === id)?.title ?? String(id)),
   }));
   compare('task',tasks(before),tasks(after),[['title','Titel'],['description','Beschreibung'],['priority','Priorität'],['kind','Typ'],['projectName','Projekt'],['dueDate','Fälligkeit'],['status','Status'],['releaseName','Release'],['predecessorNames','Vorgänger'],['successorNames','Folgeaufgaben']]);
  }

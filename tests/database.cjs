@@ -508,3 +508,35 @@ test('history persists precise changes, notes, moves and deletions atomically', 
   assert.ok(entries.some(e => e.manual && e.entityId===task.id && e.newValue==='Nur hier'));
   db.close(); db = new PlannerDatabase(file); assert.deepEqual(db.read().history,entries); db.close();
 });
+
+test('creation records one event even with initial criteria and dependencies, while later edits are recorded', t => {
+  const file = tempDatabase(t);
+  const db = new PlannerDatabase(file);
+  t.after(() => db.close());
+  const mutate = fn => db.mutate(db.read().revision, fn);
+  mutate(() => db.saveProject(null,{title:'Software',kind:'software',priority:'normal',description:'',dueDate:null}));
+  const project = db.read().projects[0].id;
+  mutate(() => db.saveTask(null,fields('Vorgänger',{projectId:project})));
+  const predecessor = find(db,'Vorgänger').id;
+  mutate(() => db.createRelease(project,'v1','2026-12-01'));
+  const release = db.read().releases[0];
+  assert.deepEqual(db.read().history.filter(e => e.entityKind==='release' && e.entityId===release.id).map(e => e.field),['Erstellt']);
+  for (const kind of ['task','feature','fix']) {
+    const initial = fields(kind,{projectId:project,kind,releaseId:release.id,description:'Initial',status:'in_progress',predecessorIds:[predecessor],criteria:kind==='task' ? [] : [{id:null,text:'Initiales Kriterium',completed:false}]});
+    const before = new Set(db.read().history.map(e => e.id));
+    mutate(() => db.saveTask(null,initial));
+    const item = find(db,kind);
+    const created = db.read().history.filter(e => !before.has(e.id));
+    assert.deepEqual(created.map(e => [e.entityId,e.field]),[[item.id,'Erstellt']]);
+    const updated = {...initial,description:'Geändert',criteria:item.criteria};
+    mutate(() => db.saveTask(item.id,updated));
+    assert.ok(db.read().history.some(e => e.entityKind==='task' && e.entityId===item.id && e.field==='Beschreibung' && e.oldValue==='Initial' && e.newValue==='Geändert'));
+    if (kind !== 'task') {
+      mutate(() => db.completeCriterion(item.criteria[0].id,true));
+      assert.ok(db.read().history.some(e => e.entityKind==='task' && e.entityId===item.id && e.field==='Akzeptanzkriterium' && e.newValue==='Initiales Kriterium (erledigt)'));
+    }
+    mutate(() => db.saveTask(item.id,{...updated,criteria:db.read().tasks.find(t => t.id===item.id).criteria,predecessorIds:[]}));
+    assert.ok(db.read().history.some(e => e.entityKind==='task' && e.entityId===item.id && e.field==='Vorgänger'));
+    assert.ok(db.read().history.some(e => e.entityKind==='task' && e.entityId===predecessor && e.field==='Folgeaufgaben'));
+  }
+});
