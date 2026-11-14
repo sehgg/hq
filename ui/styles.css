@@ -370,8 +370,6 @@ fieldset { padding: 0; border: 0; margin: 16px; min-width: 0; }
 .detail-link, .task-open { border: 0; background: none; color: inherit; font: inherit; text-align: left; padding: 0; cursor: pointer; }
 .detail-link { color: var(--accent-primary); text-decoration: underline; }
 .task-open:hover { color: var(--accent-primary); text-decoration: underline; }
-.subtask-form { display: flex; gap: 4px; margin-top: 8px; }
-.subtask-form input { min-width: 0; flex: 1; padding: 5px; background: var(--background); border: 1px solid var(--border-strong); color: var(--text); }
 .field textarea { width: 100%; resize: vertical; padding: 6px 8px; border: 1px solid var(--border-strong); background: var(--rail); color: var(--text); font: inherit; }
 .extra-field { margin-top: 13px; }
 .predecessors { margin: 13px 0 0; padding: 0; }

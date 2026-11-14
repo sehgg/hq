@@ -23,7 +23,7 @@ On Apple Silicon the app is `out/HQ-darwin-arm64/HQ.app`; on Intel macOS it is `
 
 1. Select **Projekte** and use **[ + ]** to create a project. Choose a normal or software project, and optionally add a description and deadline.
 2. Open the project and use **[ + ]** in **Aufgaben** to create a task. Add its description, status, due date, and predecessors in the editor. Tasks can also be created in **Posteingang** before assigning them to a project.
-3. Select the task to open its details on the right. Use **[ B ]** to edit it and add or check subtasks in the details. A task cannot be completed while a subtask or predecessor remains open.
+3. Select the task to open its details on the right. Use **[ B ]** to add, rename, or remove subtasks in the editor. Check or reopen subtasks in the details. A task cannot be completed while a subtask or predecessor remains open.
 4. In a software project, use the **Features**, **Fixes**, and **Releases** tabs to plan work. Assign an entry to a release in its editor. A release can be published once all its assigned tasks, features, and fixes are done.
 
 Each project has a **Status** tab with a dated history of project, entry, and release changes. Task and release details show their own history. Add a manual note in the relevant history. History begins after upgrading and includes changes made through the v0.2.0 desktop app and CLI. Creating a task, feature, fix, or release adds a single creation entry; later edits are recorded separately.

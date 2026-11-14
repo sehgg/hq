@@ -23,6 +23,25 @@ function tempDatabase(t, legacy = false) {
 }
 function find(db, title) { return db.read().tasks.find(item => item.title === title); }
 
+test('editing subtasks preserves completion and rolls back invalid task changes', t => {
+  const db = new PlannerDatabase(tempDatabase(t));
+  db.saveTask(null, fields('Aufgabe', {subtasks:[{id:null,title:'Erste'},{id:null,title:'Zweite'}]}));
+  const taskId = find(db, 'Aufgabe').id;
+  const [first, second] = db.read().subtasks;
+  db.completeSubtask(first.id, true);
+  const changes = [{id:first.id,title:'Umbenannt'},{id:null,title:'Neue'}];
+  assert.throws(() => db.saveTask(taskId, fields('Aufgabe', {status:'done',subtasks:changes})), /Unteraufgaben/);
+  assert.deepEqual(db.read().subtasks.map(s => s.title), ['Erste','Zweite']);
+  db.saveTask(taskId, fields('Aufgabe', {subtasks:changes}));
+  const subtasks = db.read().subtasks;
+  assert.deepEqual(subtasks.map(s => [s.title,s.completed]), [['Umbenannt',true],['Neue',false]]);
+  assert.equal(subtasks[0].id, first.id);
+  assert.ok(!subtasks.some(s => s.id === second.id && s.title === 'Zweite'));
+  db.saveTask(taskId, fields('Aufgabe'));
+  assert.equal(db.read().subtasks.length, 2);
+  db.close();
+});
+
 test('migration preserves projects, tasks and their completed states across a restart', t => {
   const file = tempDatabase(t, true);
   let db = new PlannerDatabase(file);

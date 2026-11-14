@@ -270,6 +270,10 @@ export class PlannerDatabase {
   });
   const existingIds = criteria.filter(c => c.id !== null).map(c => c.id);
   if (new Set(existingIds).size !== existingIds.length) throw new Error('Ein Akzeptanzkriterium wurde mehrfach angegeben.');
+  if (fields.subtasks !== undefined && !Array.isArray(fields.subtasks)) throw new Error('Die Unteraufgaben sind ungültig.');
+  const subtasks = fields.subtasks?.map(subtask => ({ id: subtask.id === null ? null : identifier(subtask.id), title: title(subtask.title) }));
+  const subtaskIds = subtasks?.flatMap(subtask => subtask.id === null ? [] : [subtask.id]) ?? [];
+  if (new Set(subtaskIds).size !== subtaskIds.length) throw new Error('Eine Unteraufgabe wurde mehrfach angegeben.');
   if (fields.featureId !== null) throw new Error('Aufgaben-Zuordnungen werden nicht mehr unterstützt.');
   const featureId = null;
   const due=validDate(fields.dueDate);
@@ -286,6 +290,15 @@ export class PlannerDatabase {
    if (id === null) { taskId=Number(this.db.prepare('INSERT INTO tasks (id,title,priority,description,project_id,due_date,status,completed,kind) VALUES (?,?,?,?,?,?,?,?,?)').run(this.nextEntityId('tasks','task'),name,rank,desc,projectId,due,'planned',0,fields.kind).lastInsertRowid); }
    else { taskId=identifier(id); if (!this.db.prepare('SELECT 1 FROM tasks WHERE id=?').get(taskId)) throw new Error('Die Aufgabe wurde nicht gefunden.'); }
    for (const criterion of criteria) if (criterion.id !== null && !this.db.prepare('SELECT 1 FROM acceptance_criteria WHERE id=? AND task_id=?').get(criterion.id, taskId)) throw new Error('Das Akzeptanzkriterium wurde nicht gefunden.');
+   if (subtasks) {
+    for (const subtaskId of subtaskIds) if (!this.db.prepare('SELECT 1 FROM subtasks WHERE id=? AND task_id=?').get(subtaskId, taskId)) throw new Error('Die Unteraufgabe wurde nicht gefunden.');
+    const existing = this.db.prepare('SELECT id FROM subtasks WHERE task_id=?').all(taskId) as Array<{id:number}>;
+    for (const subtask of subtasks) {
+     if (subtask.id === null) this.db.prepare('INSERT INTO subtasks (task_id,title) VALUES (?,?)').run(taskId,subtask.title);
+     else this.db.prepare('UPDATE subtasks SET title=? WHERE id=?').run(subtask.title,subtask.id);
+    }
+    for (const subtask of existing) if (!subtaskIds.includes(subtask.id)) this.db.prepare('DELETE FROM subtasks WHERE id=?').run(subtask.id);
+   }
    if (state !== 'done') this.ensureCanReopen(taskId);
    this.db.prepare('DELETE FROM task_dependencies WHERE successor_id=?').run(taskId);
    for (const predecessor of predecessors) {

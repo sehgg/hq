@@ -6,7 +6,8 @@ export type TaskKind = 'task' | 'feature' | 'fix';
 export interface BaseFields { title: string; priority: Priority; description: string }
 export interface ProjectFields extends BaseFields { kind: ProjectKind; dueDate: string | null }
 export interface CriterionFields { id: number | null; text: string; completed: boolean }
-export interface TaskFields extends BaseFields { kind: TaskKind; featureId: number | null; releaseId: number | null; criteria: CriterionFields[]; projectId: number | null; dueDate: string | null; status: TaskStatus; predecessorIds: number[] }
+export interface SubtaskFields { id: number | null; title: string }
+export interface TaskFields extends BaseFields { kind: TaskKind; featureId: number | null; releaseId: number | null; criteria: CriterionFields[]; projectId: number | null; dueDate: string | null; status: TaskStatus; predecessorIds: number[]; subtasks?: SubtaskFields[] }
 export interface Project extends ProjectFields { id: number }
 export interface Task extends TaskFields { targetVersion: string | null; id: number; completed: boolean; successorIds: number[] }
 export interface Subtask { id: number; taskId: number; title: string; completed: boolean }

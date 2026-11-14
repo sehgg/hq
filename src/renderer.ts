@@ -4,6 +4,7 @@ type Project = import('./shared').Project;
 type Task = import('./shared').Task;
 type Workspace = import('./shared').Workspace;
 type CriterionFields = import('./shared').CriterionFields;
+type SubtaskFields = import('./shared').SubtaskFields;
 type TaskKind = import('./shared').TaskKind;
 type ProjectKind = import('./shared').ProjectKind;
 type ReleaseStatus = import('./shared').ReleaseStatus;
@@ -179,6 +180,7 @@ let pendingDeleteReleaseId: number | null = null;
 let pendingDeleteTaskId: number | null = null;
 let selectedPredecessors = new Set<number>();
 let draftCriteria: CriterionFields[] = [];
+let draftSubtasks: SubtaskFields[] = [];
 const releaseStatusNames: Record<ReleaseStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', published: 'Veröffentlicht' };
 const statusNames: Record<TaskStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', done: 'Erledigt' };
 function errorMessage(error: unknown): string {
@@ -477,20 +479,11 @@ function renderDetails(): void {
     ${task.criteria.length ? `<section><h3>Akzeptanzkriterien</h3><ul class="detail-list">${task.criteria.map(criterion => `<li><label><input type="checkbox" data-criterion="${criterion.id}" ${criterion.completed ? 'checked' : ''}> ${escapeHtml(criterion.text)}</label></li>`).join('')}</ul></section>` : ''}
     <div class="details-metadata"><section><h3>Fällig am</h3><p>${task.dueDate ? escapeHtml(task.dueDate.split('-').reverse().join('.')) : 'Kein Datum'}</p></section><section><h3>Status</h3><p>${statusNames[task.status]}</p></section>${project?.kind === 'software' ? `<section><h3>Zielversion</h3><p>${task.targetVersion ? escapeHtml(task.targetVersion) + (assignedRelease?.published ? ' (veröffentlicht)' : '') : 'Keine Zielversion'}</p></section>` : ''}</div>
     <section><h3>Unteraufgaben</h3><ul class="detail-list">${subtasks.map(item => `<li><label><input type="checkbox" data-subtask="${item.id}" ${item.completed ? 'checked' : ''}> ${escapeHtml(item.title)}</label></li>`).join('')}</ul>
-    <form id="subtask-form" class="subtask-form"><label class="sr-only" for="subtask-title">Neue Unteraufgabe</label><input id="subtask-title" maxlength="120" required placeholder="Neue Unteraufgabe"><button class="button compact" type="submit" aria-label="Unteraufgabe anlegen">+</button></form></section>
+    </section>
     <section><h3>Vorgänger</h3><ul class="detail-list">${links(task.predecessorIds)}</ul></section><section><h3>Folgeaufgaben</h3><ul class="detail-list">${links(task.successorIds)}</ul></section>
     ${historyPanel('task', task.id)}
     </div>`;
 }
-details.addEventListener('submit', async event => {
-  if (!(event.target instanceof HTMLFormElement) || event.target.id !== 'subtask-form' || selectedTaskId === null || saving) return;
-  event.preventDefault();
-  const input = document.querySelector<HTMLInputElement>('#subtask-title')!;
-  saving = true;
-  try { workspace = await window.hq.addSubtask(selectedTaskId, input.value, workspace.revision); render(); document.querySelector<HTMLInputElement>('#subtask-title')?.focus(); }
-  catch (error) { announce(errorMessage(error), true); }
-  finally { saving = false; }
-});
 
 
 function openDeleteDialog(id: number): void {
@@ -569,6 +562,8 @@ function openEditor(mode: EditorMode): void {
 
   draftCriteria = isFeature ? (task?.criteria ?? []).map(criterion => ({...criterion})) : [];
   renderCriteriaEditor();
+  draftSubtasks = task ? workspace.subtasks.filter(subtask => subtask.taskId === task.id).map(({id, title}) => ({id, title})) : [];
+  renderSubtaskEditor();
   projectKindField.value = !isTask ? ((entry as Project | undefined)?.kind ?? 'normal') : 'normal';
 
   document.querySelector('#editor-label')!.textContent = isFix ? 'Fix' : isFeature ? 'Feature' : isTask ? 'Aufgabe' : 'Projekt';
@@ -625,6 +620,25 @@ projectField.addEventListener('change', () => { updateReleaseOptions(editing?.ki
 function renderCriteriaEditor(): void {
   criteriaField.innerHTML = draftCriteria.map((criterion, index) => `<div class="criterion-row"><label class="criterion-check"><input type="checkbox" data-criterion-check="${index}" ${criterion.completed ? 'checked' : ''} aria-label="Kriterium ${index + 1} erfüllt"></label><label class="criterion-text"><span class="sr-only">Akzeptanzkriterium ${index + 1}</span><input type="text" required maxlength="1000" data-criterion-text="${index}" value="${escapeHtml(criterion.text)}" placeholder="Prüfbares Kriterium"></label><button type="button" class="button compact" data-remove-criterion="${index}" aria-label="Kriterium ${index + 1} entfernen">−</button></div>`).join('');
 }
+const subtaskField = document.querySelector<HTMLElement>('#entry-subtasks')!;
+function renderSubtaskEditor(): void {
+  subtaskField.innerHTML = draftSubtasks.map((subtask, index) => `<div class="criterion-row"><label class="criterion-text"><span class="sr-only">Unteraufgabe ${index + 1}</span><input type="text" required maxlength="120" data-subtask-text="${index}" value="${escapeHtml(subtask.title)}" placeholder="Unteraufgabe"></label><button type="button" class="button compact" data-remove-subtask="${index}" aria-label="Unteraufgabe ${index + 1} entfernen">−</button></div>`).join('');
+}
+document.querySelector<HTMLButtonElement>('#add-subtask')!.addEventListener('click', () => {
+  draftSubtasks.push({id:null, title:''});
+  renderSubtaskEditor();
+  subtaskField.querySelector<HTMLInputElement>(`[data-subtask-text="${draftSubtasks.length - 1}"]`)?.focus();
+});
+subtaskField.addEventListener('input', event => {
+  if (!(event.target instanceof HTMLInputElement) || event.target.dataset.subtaskText === undefined) return;
+  const subtask = draftSubtasks[Number(event.target.dataset.subtaskText)];
+  if (subtask) subtask.title = event.target.value;
+});
+subtaskField.addEventListener('click', event => {
+  if (!(event.target instanceof Element)) return;
+  const button = event.target.closest<HTMLButtonElement>('[data-remove-subtask]');
+  if (button) { draftSubtasks.splice(Number(button.dataset.removeSubtask), 1); renderSubtaskEditor(); }
+});
 document.querySelector<HTMLButtonElement>('#add-criterion')!.addEventListener('click', () => {
   draftCriteria.push({id:null, text:'', completed:false});
   renderCriteriaEditor();
@@ -818,7 +832,7 @@ form.addEventListener('submit', async event => {
       showView(newProject?.id ?? view);
       announce(mode.id === null ? 'Projekt angelegt.' : 'Projekt gespeichert.');
     } else {
-      workspace = await window.hq.saveTask(mode.id, { ...fields, kind: editorTaskKind, featureId: null, releaseId: targetVersionField.value === 'keep-published' ? editorPublishedReleaseId : targetVersionField.value ? Number(targetVersionField.value) : null, criteria: editorTaskKind !== 'task' ? draftCriteria : [], projectId, dueDate: dueField.value || null, status: statusField.value as TaskStatus, predecessorIds: [...selectedPredecessors] }, workspace.revision);
+      workspace = await window.hq.saveTask(mode.id, { ...fields, kind: editorTaskKind, featureId: null, releaseId: targetVersionField.value === 'keep-published' ? editorPublishedReleaseId : targetVersionField.value ? Number(targetVersionField.value) : null, criteria: editorTaskKind !== 'task' ? draftCriteria : [], subtasks: draftSubtasks, projectId, dueDate: dueField.value || null, status: statusField.value as TaskStatus, predecessorIds: [...selectedPredecessors] }, workspace.revision);
       editing = null;
       editor.close();
       render();
