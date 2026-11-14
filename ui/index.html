@@ -22,7 +22,8 @@
       </div>
 
       <nav id="navigation" aria-label="Hauptnavigation"></nav>
-      <div id="sidebar-resize" class="sidebar-resize" role="separator" tabindex="0" aria-label="Breite der Seitenleiste ändern" aria-orientation="vertical" aria-controls="sidebar" aria-valuemin="226" aria-valuemax="10000" aria-valuenow="226"></div>
+      <div id="sidebar-resize" class="sidebar-resize" role="separator" tabindex="0" aria-label="Breite der Seitenleiste ändern" aria-orientation="vertical" aria-controls="sidebar" aria-valuemin="226" aria-valuemax="10000" aria-valuenow="226">
+      </div>
     </aside>
 
     <main id="main" class="main" aria-busy="true">
@@ -30,7 +31,8 @@
         <p class="loading">Arbeitsbereich wird geladen …</p>
       </div>
     </main>
-    <div id="details-resize" class="details-resize" role="separator" tabindex="0" aria-label="Breite der Detailseitenleiste ändern" aria-orientation="vertical" aria-controls="details" aria-valuemin="320" aria-valuemax="10000" aria-valuenow="320" hidden></div>
+    <div id="details-resize" class="details-resize" role="separator" tabindex="0" aria-label="Breite der Detailseitenleiste ändern" aria-orientation="vertical" aria-controls="details" aria-valuemin="320" aria-valuemax="10000" aria-valuenow="320" hidden>
+    </div>
     <aside id="details" class="details" aria-label="Aufgabendetails" hidden></aside>
   </div>
 
@@ -43,14 +45,22 @@
   <div id="notice" class="notice" role="status" aria-atomic="true" hidden></div>
 
   <dialog id="delete-release-dialog" aria-labelledby="delete-release-title" aria-describedby="delete-release-description">
-    <div class="dialog-head"><h2 id="delete-release-title">Release löschen?</h2></div>
+    <div class="dialog-head">
+      <h2 id="delete-release-title">Release löschen?</h2></div>
     <div class="delete-content"><p id="delete-release-description"></p><p id="delete-release-error" class="editor-error" role="alert" hidden></p></div>
-    <div class="dialog-actions"><button type="button" class="button secondary" id="cancel-delete-release" autofocus>Abbrechen</button><button type="button" class="button danger" id="confirm-delete-release">Endgültig löschen</button></div>
+    <div class="dialog-actions">
+      <button type="button" class="button secondary" id="cancel-delete-release" autofocus>Abbrechen</button>
+      <button type="button" class="button danger" id="confirm-delete-release">Endgültig löschen</button>
+    </div>
   </dialog>
   <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
-    <div class="dialog-head"><h2 id="delete-title"></h2></div>
+    <div class="dialog-head">
+      <h2 id="delete-title"></h2></div>
     <div class="delete-content"><p id="delete-description"></p><p id="delete-error" class="editor-error" role="alert" hidden></p></div>
-    <div class="dialog-actions"><button type="button" class="button secondary" id="cancel-delete" autofocus>Abbrechen</button><button type="button" class="button danger" id="confirm-delete">Endgültig löschen</button></div>
+    <div class="dialog-actions">
+      <button type="button" class="button secondary" id="cancel-delete" autofocus>Abbrechen</button>
+      <button type="button" class="button danger" id="confirm-delete">Endgültig löschen</button>
+    </div>
   </dialog>
 
   <dialog id="editor" aria-labelledby="editor-title">
@@ -68,24 +78,59 @@
           <span>Name</span>
           <input id="entry-title" name="title" type="text" required maxlength="120" autocomplete="off" autofocus>
         </label>
-        <label class="field extra-field" id="project-kind-field"><span>Projekttyp</span><select id="entry-project-kind"><option value="normal">Normales Projekt</option><option value="software">Softwareprojekt</option></select></label>
+        <label class="field extra-field" id="project-kind-field"><span>Projekttyp</span>
+          <select id="entry-project-kind">
+            <option value="normal">Normales Projekt</option>
+            <option value="software">Softwareprojekt</option>
+          </select>
+        </label>
         <div id="project-due-field" class="extra-field" hidden>
           <label class="field"><span>Projektfrist</span><input id="entry-project-due" type="date"></label>
           <div id="project-due-conflicts" class="project-due-conflicts" aria-live="polite" hidden></div>
         </div>
-        <label class="field extra-field"><span id="description-label">Beschreibung</span><textarea id="entry-description" rows="3" maxlength="10000"></textarea></label>
-        <fieldset class="criteria-editor"><legend>Meldungen</legend><div id="entry-notes"></div><button type="button" class="button compact" id="add-entry-note" aria-label="Meldung hinzufügen">+</button></fieldset>
-        <div id="release-assignment-field" hidden><label class="field extra-field"><span>Zielversion</span><select id="entry-target-version"></select></label><p id="published-version" class="release-note" hidden></p></div>
+        <label class="field extra-field"><span id="description-label">Beschreibung</span><textarea id="entry-description" rows="3" maxlength="10000"></textarea>
+        </label>
+        <fieldset class="criteria-editor">
+          <legend>Meldungen</legend>
+          <div id="entry-notes"></div>
+          <button type="button" class="button compact" id="add-entry-note" aria-label="Meldung hinzufügen">+</button>
+        </fieldset>
+        <div id="release-assignment-field" hidden>
+          <label class="field extra-field"><span>Zielversion</span>
+            <select id="entry-target-version">
+            </select>
+          </label>
+          <p id="published-version" class="release-note" hidden></p>
+        </div>
         <div id="feature-fields" hidden>
-          <fieldset class="criteria-editor"><legend>Akzeptanzkriterien</legend><div id="entry-criteria"></div><button type="button" class="button compact" id="add-criterion" aria-label="Akzeptanzkriterium hinzufügen">+</button></fieldset>
+          <fieldset class="criteria-editor">
+            <legend>Akzeptanzkriterien</legend>
+            <div id="entry-criteria"></div>
+            <button type="button" class="button compact" id="add-criterion" aria-label="Akzeptanzkriterium hinzufügen">+</button>
+          </fieldset>
         </div>
         <div id="task-fields">
-          <fieldset class="criteria-editor"><legend>Unteraufgaben</legend><div id="entry-subtasks"></div><button type="button" class="button compact" id="add-subtask" aria-label="Unteraufgabe hinzufügen">+</button></fieldset>
+          <fieldset class="criteria-editor">
+            <legend>Unteraufgaben</legend>
+            <div id="entry-subtasks"></div>
+            <button type="button" class="button compact" id="add-subtask" aria-label="Unteraufgabe hinzufügen">+</button>
+          </fieldset>
           <div class="field-row">
             <label class="field"><span>Fällig am</span><input id="entry-due" type="date"></label>
-            <label class="field"><span>Status</span><select id="entry-status"><option value="planned">Geplant</option><option value="in_progress">In Arbeit</option><option value="paused">Pausiert</option><option value="done">Erledigt</option></select></label>
+            <label class="field"><span>Status</span>
+              <select id="entry-status">
+                <option value="planned">Geplant</option>
+                <option value="in_progress">In Arbeit</option>
+                <option value="paused">Pausiert</option>
+                <option value="done">Erledigt</option>
+              </select>
+            </label>
           </div>
-          <fieldset class="predecessors"><legend>Vorgänger</legend><div id="entry-predecessors"></div><button type="button" class="button compact" id="add-predecessor" aria-label="Vorgänger hinzufügen" title="Vorgänger hinzufügen">+</button></fieldset>
+          <fieldset class="predecessors">
+            <legend>Vorgänger</legend>
+            <div id="entry-predecessors"></div>
+            <button type="button" class="button compact" id="add-predecessor" aria-label="Vorgänger hinzufügen" title="Vorgänger hinzufügen">+</button>
+          </fieldset>
         </div>
         <div class="field-row">
           <label class="field">
@@ -112,23 +157,66 @@
     </form>
   </dialog>
   <dialog id="release-dialog" aria-labelledby="release-dialog-title">
-    <form id="release-form"><div class="dialog-head"><h2 id="release-dialog-title">Neues Release</h2><button type="button" class="button compact" id="close-release" aria-label="Schließen">×</button></div>
-    <fieldset><label class="field"><span>Versionsnummer</span><input id="release-version" type="text" maxlength="120" required placeholder="z. B. v0.4.0"></label><label class="field extra-field"><span>Fällig am</span><input id="release-due" type="date"></label><label class="field extra-field" id="release-status-field" hidden><span>Status</span><select id="release-status"><option value="planned">Geplant</option><option value="in_progress">In Arbeit</option><option value="paused">Pausiert</option><option value="published">Veröffentlicht</option></select></label><fieldset class="criteria-editor"><legend>Meldungen</legend><div id="release-notes"></div><button type="button" class="button compact" id="add-release-note" aria-label="Meldung hinzufügen">+</button></fieldset></fieldset>
-    <p id="release-error" class="editor-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" class="button danger" id="delete-release-entry" hidden>Löschen</button><button type="button" class="button secondary" id="cancel-release">Abbrechen</button><button type="submit" class="button primary" id="save-release">Release anlegen</button></div></form>
+    <form id="release-form">
+      <div class="dialog-head">
+        <h2 id="release-dialog-title">Neues Release</h2>
+        <button type="button" class="button compact" id="close-release" aria-label="Schließen">×</button>
+      </div>
+      <fieldset>
+        <label class="field"><span>Versionsnummer</span><input id="release-version" type="text" maxlength="120" required placeholder="z. B. v0.4.0">
+        </label>
+        <label class="field extra-field"><span>Fällig am</span><input id="release-due" type="date">
+        </label>
+        <label class="field extra-field" id="release-status-field" hidden><span>Status</span>
+          <select id="release-status">
+            <option value="planned">Geplant</option>
+            <option value="in_progress">In Arbeit</option>
+            <option value="paused">Pausiert</option>
+            <option value="published">Veröffentlicht</option>
+          </select>
+        </label>
+        <fieldset class="criteria-editor">
+          <legend>Meldungen</legend>
+          <div id="release-notes"></div>
+          <button type="button" class="button compact" id="add-release-note" aria-label="Meldung hinzufügen">+</button>
+        </fieldset>
+      </fieldset>
+      <p id="release-error" class="editor-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="button danger" id="delete-release-entry" hidden>Löschen</button>
+        <button type="button" class="button secondary" id="cancel-release">Abbrechen</button>
+        <button type="submit" class="button primary" id="save-release">Release anlegen</button>
+      </div>
+    </form>
   </dialog>
   <dialog id="publish-dialog" aria-labelledby="publish-title" aria-describedby="publish-description">
-    <div class="dialog-head"><h2 id="publish-title">Release veröffentlichen?</h2></div><div class="delete-content"><p id="publish-description"></p><p id="publish-error" class="editor-error" role="alert" hidden></p></div>
-    <div class="dialog-actions"><button type="button" class="button secondary" id="cancel-publish" autofocus>Abbrechen</button><button type="button" class="button primary" id="confirm-publish">Veröffentlichen</button></div>
+    <div class="dialog-head">
+      <h2 id="publish-title">Release veröffentlichen?</h2>
+    </div>
+    <div class="delete-content">
+      <p id="publish-description"></p>
+      <p id="publish-error" class="editor-error" role="alert" hidden></p>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="button secondary" id="cancel-publish" autofocus>Abbrechen</button>
+      <button type="button" class="button primary" id="confirm-publish">Veröffentlichen</button>
+    </div>
   </dialog>
   <dialog id="predecessor-dialog" aria-labelledby="predecessor-dialog-title">
     <form id="predecessor-form">
-      <div class="dialog-head"><h2 id="predecessor-dialog-title">Vorgänger auswählen</h2><button type="button" class="button compact" id="close-predecessor" aria-label="Schließen">×</button></div>
+      <div class="dialog-head">
+        <h2 id="predecessor-dialog-title">Vorgänger auswählen</h2>
+        <button type="button" class="button compact" id="close-predecessor" aria-label="Schließen">×</button>
+      </div>
       <fieldset>
         <label class="field"><span>Projekt</span><select id="predecessor-project" required></select></label>
         <label class="field extra-field"><span>Aufgabe</span><select id="predecessor-task" required disabled></select></label>
         <p id="predecessor-empty" class="muted" hidden>Keine weiteren Aufgaben in diesem Projekt verfügbar.</p>
       </fieldset>
-      <div class="dialog-actions"><button type="button" class="button secondary" id="cancel-predecessor">Abbrechen</button><button type="submit" class="button primary" id="confirm-predecessor" disabled>Übernehmen</button></div>
+      <div class="dialog-actions">
+        <button type="button" class="button secondary" id="cancel-predecessor">Abbrechen</button>
+        <button type="submit" class="button primary" id="confirm-predecessor" disabled>Übernehmen</button>
+      </div>
     </form>
   </dialog>
 </body>
