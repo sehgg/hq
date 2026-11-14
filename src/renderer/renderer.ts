@@ -1,16 +1,16 @@
-type HistoryKind = import('./shared').HistoryKind;
-type Priority = import('./shared').Priority;
-type Project = import('./shared').Project;
-type Task = import('./shared').Task;
-type Workspace = import('./shared').Workspace;
-type CriterionFields = import('./shared').CriterionFields;
-type SubtaskFields = import('./shared').SubtaskFields;
-type NoteFields = import('./shared').NoteFields;
-type TaskKind = import('./shared').TaskKind;
-type ProjectKind = import('./shared').ProjectKind;
-type ReleaseStatus = import('./shared').ReleaseStatus;
-type TaskStatus = import('./shared').TaskStatus;
-type HqApi = import('./shared').HqApi;
+type HistoryKind = import('../shared').HistoryKind;
+type Priority = import('../shared').Priority;
+type Project = import('../shared').Project;
+type Task = import('../shared').Task;
+type Workspace = import('../shared').Workspace;
+type CriterionFields = import('../shared').CriterionFields;
+type SubtaskFields = import('../shared').SubtaskFields;
+type NoteFields = import('../shared').NoteFields;
+type TaskKind = import('../shared').TaskKind;
+type ProjectKind = import('../shared').ProjectKind;
+type ReleaseStatus = import('../shared').ReleaseStatus;
+type TaskStatus = import('../shared').TaskStatus;
+type HqApi = import('../shared').HqApi;
 type View = 'inbox' | 'projects' | 'ideas' | 'research' | number;
 type EditorMode = {
     kind: 'project';
@@ -319,7 +319,7 @@ function renderDetails(): void {
     details.innerHTML = release ? renderReleaseDetails(release) : task ? renderTaskDetails(task) : '';
 }
 
-function renderReleaseDetails(release: import('./shared').Release): string {
+function renderReleaseDetails(release: import('../shared').Release): string {
     const items = workspace.tasks.filter(item => item.releaseId === release.id);
     const list = (kind: TaskKind) => {
         const matching = items.filter(item => item.kind === kind);

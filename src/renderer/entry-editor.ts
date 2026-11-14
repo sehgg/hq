@@ -299,7 +299,7 @@ function createEntryEditor(context: DialogContext & {
         else
             editing = null;
     });
-    function readFormFields(mode: EditorMode): import('./shared').BaseFields | undefined {
+    function readFormFields(mode: EditorMode): import('../shared').BaseFields | undefined {
         const title = titleField.value.trim();
         if (!title) {
             editorError.textContent = 'Gib einen Namen ein.';
@@ -322,7 +322,7 @@ function createEntryEditor(context: DialogContext & {
         editor.close();
     }
 
-    async function saveProject(id: number | null, fields: import('./shared').BaseFields): Promise<void> {
+    async function saveProject(id: number | null, fields: import('../shared').BaseFields): Promise<void> {
         const previousIds = new Set(context.workspace.projects.map(project => project.id));
         context.workspace = await window.hq.saveProject(id, {
             ...fields,
@@ -335,7 +335,7 @@ function createEntryEditor(context: DialogContext & {
         context.announce(id === null ? 'Projekt angelegt.' : 'Projekt gespeichert.');
     }
 
-    async function saveTask(id: number | null, fields: import('./shared').BaseFields): Promise<void> {
+    async function saveTask(id: number | null, fields: import('../shared').BaseFields): Promise<void> {
         const kind = editorTaskKind;
         const projectId = projectField.value ? Number(projectField.value) : null;
         const releaseValue = targetVersionField.value;
