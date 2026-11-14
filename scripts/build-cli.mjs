@@ -8,10 +8,28 @@ const version=spawnSync(runtime,['--version'],{encoding:'utf8'});
 if (version.status!==0 || Number(version.stdout.trim().replace(/^v/, '').split('.')[0])<24) throw new Error('HQ_NODE must point to Node.js 24 or later with single executable application support.');
 const out=resolve('out',`cli-${process.platform}-${process.arch}`);
 mkdirSync(out,{recursive:true});
-const database=readFileSync('dist/database.js','utf8');
-const cli=readFileSync('dist/cli.js','utf8');
-const main=join(out,'bundle.cjs');
-writeFileSync(main,`(function(){process.removeAllListeners('warning');const db={exports:{}};(function(require,module,exports){\n${database}\n})(require,db,db.exports);const localRequire=(id)=>id==='./database'?db.exports:require(id);(function(require,module,exports){\n${cli}\n})(localRequire,{exports:{}},{});})();\n`);
+const main = join(out, 'bundle.cjs');
+const moduleNames = ['database-migrations', 'database-history', 'database', 'cli'];
+const factories = moduleNames.map(name => {
+  const source = readFileSync(join('dist', `${name}.js`), 'utf8');
+  return `  './${name}': (require, module, exports) => {\n${source}\n  },`;
+});
+writeFileSync(main, `
+process.removeAllListeners('warning');
+const factories = {
+${factories.join('\n')}
+};
+const cache = new Map();
+function localRequire(id) {
+  if (!Object.hasOwn(factories, id)) return require(id);
+  if (cache.has(id)) return cache.get(id).exports;
+  const module = { exports: {} };
+  cache.set(id, module);
+  factories[id](localRequire, module, module.exports);
+  return module.exports;
+}
+localRequire('./cli');
+`);
 const config=join(out,'sea.json'), blob=join(out,'sea.blob');
 const output=join(out,process.platform==='win32'?'hq.exe':'hq');
 writeFileSync(config,JSON.stringify({main:relative(process.cwd(),main),output:relative(process.cwd(),blob),disableExperimentalSEAWarning:true}));

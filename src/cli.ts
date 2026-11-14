@@ -157,18 +157,15 @@ function createTask(db: PlannerDatabase, workspace: Workspace) {
     kind: (str('kind') ?? 'task') as TaskFields['kind'],
     featureId: null, releaseId: null, criteria: [], predecessorIds: [],
   };
-  db.saveTask(null, fields(base));
-  const next = db.read();
-  const ids = new Set(workspace.tasks.map(task => task.id));
-  return taskDetail(next, next.tasks.find(task => !ids.has(task.id))!);
+  const id = db.saveTask(null, fields(base));
+  return readTaskDetail(db, id);
 }
 
 function createRelease(db: PlannerDatabase, workspace: Workspace) {
   const project = projectFor(workspace, str('project'));
   const version = str('version') ?? fail('INVALID_ARGUMENT', '--version ist erforderlich.');
-  db.createRelease(project.id, version, str('due') ?? null);
-  const ids = new Set(workspace.releases.map(release => release.id));
-  return db.read().releases.find(release => !ids.has(release.id))!;
+  const id = db.createRelease(project.id, version, str('due') ?? null);
+  return db.read().releases.find(release => release.id === id)!;
 }
 
 function readTaskDetail(db: PlannerDatabase, id: number) {

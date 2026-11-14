@@ -11,12 +11,13 @@ HQ is an Electron desktop application and a local CLI built from the same TypeSc
 | `src/entry-editor.ts`, `src/release-editor.ts`, `src/note-editor.ts` | Set up dialog events and keep each editor’s draft local. Both editors use the same note editor factory. |
 | `src/preload.ts`, `src/shared.ts` | Exposes the typed `window.hq` bridge through Electron's context bridge; shared types define workspaces and fields. |
 | `src/main.ts` | Creates the Electron window, opens the user database, and implements IPC handlers. |
-| `src/database.ts` | `PlannerDatabase`: schema migration, SQLite queries, transactions, and shared validation and completion rules. |
+| `src/database.ts` | `PlannerDatabase`: SQLite queries, transactions, and shared validation and completion rules. |
+| `src/database-migrations.ts`, `src/database-history.ts` | Upgrade the SQLite schema and record changes between workspace snapshots. |
 | `src/cli.ts` | Parses CLI arguments, selects entries, formats human or JSON output, and calls `PlannerDatabase`. |
 | `scripts/` | Packages the desktop application and builds the CLI single executable. |
 | `tests/` | Database, CLI, and renderer tests, including concurrent writers. |
 
-TypeScript is compiled into `dist/`. The app loads the compiled renderer from the HTML and runs the compiled main and preload scripts. The CLI packaging script bundles the compiled CLI and database module with a Node runtime.
+TypeScript is compiled into `dist/`. The app loads the compiled renderer from the HTML and runs the compiled main and preload scripts. The CLI packaging script bundles the compiled CLI and its database modules with a Node runtime.
 
 ## Example: saving a task
 
@@ -49,7 +50,7 @@ The CLI resolves a task and reads the workspace, then uses the same `mutate` and
 
 SQLite stores a workspace revision, incremented by triggers on changes to projects, tasks, releases, subtasks, criteria, and dependencies. `mutate` starts an immediate transaction, checks the caller's observed revision, and rejects a stale write before applying it. The caller must reload and retry; a stale full-task edit cannot silently overwrite a newer write. Reads assemble a workspace in a savepoint. SQLite foreign keys and the configured busy timeout also apply. Database initialization performs migrations and checks foreign keys.
 
-During each shared mutation, the database compares the workspace before and after the operation and records field-level history in the same transaction. History captures desktop and CLI changes, persists after entries are deleted, and starts with mutations made by the v0.2.0 database layer. Older CLI executables do not record history. A newly created task, feature, fix, or release produces a single creation event, including when initial criteria or dependencies are provided; subsequent changes are recorded individually. Manual notes belong only to their selected project, task, or release. Editor changes to notes are saved with the entity in the same transaction. Project notes may be deleted, and task and release notes may be edited. History inserts, updates, and deletions advance the workspace revision.
+During each shared mutation, the database compares the workspace before and after the operation and records field-level history in the same transaction. History captures desktop and CLI changes, persists after entries are deleted, and starts with mutations made by the v0.2.0 database layer. Older CLI executables do not record history. A newly created task, feature, fix, or release produces a single creation event, including when initial criteria or dependencies are provided; subsequent changes are recorded individually. Manual notes belong only to their selected project, task, or release. Editor changes to notes are saved with the entity in the same transaction. Save operations return the entity ID so the main process can attach notes directly. Note queries read only the relevant entity and its notes. The desktop write path reads the workspace before the mutation, after the mutation for the history comparison, and once more to return the updated history and revision. Project notes may be deleted, and task and release notes may be edited. History inserts, updates, and deletions advance the workspace revision.
 
 The desktop renderer polls for a newer workspace every two seconds. It defers refresh while saving, while a dialog is open, or while an input, textarea, or select is focused, so it does not replace a draft. Once interaction permits, external CLI changes can appear without restarting the app.
 
