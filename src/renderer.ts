@@ -270,7 +270,6 @@ function taskPanel(project: Project | undefined): string {
   const kind: TaskKind = project?.kind === 'software' && activeTab !== 'releases' && activeTab !== 'history' ? activeTab : 'task';
   const tasks = workspace.tasks.filter(task => task.kind === kind && task.projectId === projectId && (showCompleted.has(visibilityKey()) || !task.completed));
   return `<section class="panel task-panel" aria-label="${kind === 'feature' ? 'Features' : kind === 'fix' ? 'Fixes' : 'Aufgaben'}">
-    ${visibilityButton()}
     <div class="task-columns" aria-hidden="true"><span></span><span>Titel</span><span>Status</span><span>Priorität</span><span>Fälligkeit</span><span></span></div>
     ${tasks.length
       ? `<ul class="list">${tasks.map(task => taskRow(task)).join('')}</ul>`
@@ -283,7 +282,6 @@ function taskPanel(project: Project | undefined): string {
 function releasePanel(project: Project): string {
   const releases = workspace.releases.filter(item => item.projectId === project.id && (showCompleted.has(visibilityKey()) || !item.published));
   return `<section class="panel" aria-labelledby="release-heading"><header class="panel-header"><h2 id="release-heading">Releases</h2><span class="panel-meta">${releases.length} ${releases.length === 1 ? 'Release' : 'Releases'}</span></header>
-    ${visibilityButton()}
     ${releases.length ? `<ul class="list">${releases.map(release => {
       const items = workspace.tasks.filter(task => task.releaseId === release.id);
       return `<li class="release-row"><div class="release-heading"><button type="button" class="release-open" data-action="show-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} öffnen"><strong>${escapeHtml(release.version)}</strong> <span class="muted">${releaseStatusNames[release.status]}</span>${release.dueDate ? `<span class="release-due">Fällig am ${escapeHtml(release.dueDate.split('-').reverse().join('.'))}</span>` : ''}</button><div class="release-actions"><button type="button" class="button compact" data-action="edit-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} bearbeiten" title="Release bearbeiten">B</button>${release.published ? '' : `<button type="button" class="button compact" data-action="publish-release" data-id="${release.id}" aria-label="Release ${escapeHtml(release.version)} veröffentlichen">Veröffentlichen</button>`}</div></div>${([["task", "Aufgaben"], ["feature", "Features"], ["fix", "Fixes"]] as const).map(([kind, label]) => `<section><h3>${label}</h3><ul class="detail-list">${items.filter(item => item.kind === kind).map(item => `<li><button type="button" class="detail-link" data-action="show-task" data-id="${item.id}">${escapeHtml(item.title)} · ${statusNames[item.status]}</button></li>`).join('') || '<li class="muted">Keine</li>'}</ul></section>`).join('')}</li>`;
@@ -412,7 +410,7 @@ function render(): void {
     ? `<button type="button" class="button secondary" data-action="edit-project" data-id="${project.id}" aria-label="Projekt bearbeiten">B</button>`
     : '';
   const software = project?.kind === 'software';
-  const tabs = project ? `<nav class="task-tabs" aria-label="Projektbereich"><button type="button" class="task-tab" data-action="tab-history" aria-pressed="${activeTab === 'history'}">Status</button><button type="button" class="task-tab" data-action="tab-task" aria-pressed="${activeTab === 'task'}">Aufgaben</button>${software ? `<button type="button" class="task-tab" data-action="tab-feature" aria-pressed="${activeTab === 'feature'}">Features</button><button type="button" class="task-tab" data-action="tab-fix" aria-pressed="${activeTab === 'fix'}">Fixes</button><button type="button" class="task-tab" data-action="tab-releases" aria-pressed="${activeTab === 'releases'}">Releases</button>` : ''}</nav>` : '';
+  const tabs = project ? `<div class="overview-toolbar"><nav class="task-tabs" aria-label="Projektbereich"><button type="button" class="task-tab" data-action="tab-history" aria-pressed="${activeTab === 'history'}">Status</button><button type="button" class="task-tab" data-action="tab-task" aria-pressed="${activeTab === 'task'}">Aufgaben</button>${software ? `<button type="button" class="task-tab" data-action="tab-feature" aria-pressed="${activeTab === 'feature'}">Features</button><button type="button" class="task-tab" data-action="tab-fix" aria-pressed="${activeTab === 'fix'}">Fixes</button><button type="button" class="task-tab" data-action="tab-releases" aria-pressed="${activeTab === 'releases'}">Releases</button>` : ''}</nav>${activeTab === 'history' ? '' : visibilityButton()}</div>` : `<div class="overview-toolbar inbox-toolbar">${visibilityButton()}</div>`;
   content.innerHTML = `
     ${pageHeading(project?.title ?? 'Posteingang',
       project ? `Projekte / ${project.title}` : 'Posteingang',
@@ -429,7 +427,7 @@ function historyPanel(kind: HistoryKind, id: number): string {
     ? entry.projectId === id && (!entry.manual || (entry.entityKind === 'project' && entry.entityId === id))
     : entry.entityKind === kind && entry.entityId === id);
   const rows = entries.map(entry => `<tr><td>${escapeHtml(new Date(entry.date).toLocaleString('de-DE'))}</td><td>${kind === 'project' && entry.entityKind !== 'project' ? escapeHtml(entry.entityTitle) + ' · ' : ''}${escapeHtml(entry.field)}</td><td>${escapeHtml(entry.oldValue ?? '–')}</td><td>${escapeHtml(entry.newValue ?? '–')}</td></tr>`).join('');
-  return `<section class="history"><h3>Verlauf</h3><div class="history-table"><table><thead><tr><th>Datum</th><th>Änderung</th><th>Alter Wert</th><th>Neuer Wert</th></tr></thead><tbody>${rows || '<tr><td colspan="4">Noch keine Meldungen</td></tr>'}</tbody></table></div><form class="history-form" data-history-kind="${kind}" data-history-id="${id}"><label>Meldung <input name="note" maxlength="10000" required></label><button class="button compact" type="submit">Hinzufügen</button></form></section>`;
+  return `<section class="history">${kind === 'project' ? '' : '<h3>Verlauf</h3>'}<div class="history-table"><table><thead><tr><th>Datum</th><th>Änderung</th><th>Alter Wert</th><th>Neuer Wert</th></tr></thead><tbody>${rows || '<tr><td colspan="4">Noch keine Meldungen</td></tr>'}</tbody></table></div><form class="history-form" data-history-kind="${kind}" data-history-id="${id}"><label>Meldung <input name="note" maxlength="10000" required></label><button class="button compact" type="submit">Hinzufügen</button></form></section>`;
 }
 
 document.addEventListener('submit', async event => {

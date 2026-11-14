@@ -28,7 +28,7 @@ On Apple Silicon the app is `out/HQ-darwin-arm64/HQ.app`; on Intel macOS it is `
 
 Each project has a **Status** tab with a dated history of project, entry, and release changes. Task and release details show their own history. Add a manual note in the relevant history. History begins when this version is installed and includes changes made through the desktop app and CLI.
 
-Task, feature, and fix lists and the inbox show title, status, priority, and due date in columns. Each list contains entries from its own project or inbox. Completed entries and published releases are hidden by default and can be shown with the button above each list. The choice lasts until the app restarts. Release overviews and details group assigned entries as Aufgaben, Features, and Fixes. **Ideen** and **Recherche** are placeholders. Drag either sidebar divider to change its width; the focused divider also accepts the arrow keys.
+Task, feature, and fix lists and the inbox show title, status, priority, and due date in columns. Each list contains entries from its own project or inbox. Completed entries and published releases are hidden by default and can be shown with the button at the right of the project tabs or above the inbox list. The choice lasts until the app restarts. Release overviews and details group assigned entries as Aufgaben, Features, and Fixes. **Ideen** and **Recherche** are placeholders. Drag either sidebar divider to change its width; the focused divider also accepts the arrow keys.
 
 ## A typical CLI workflow
 

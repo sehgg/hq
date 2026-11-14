@@ -470,9 +470,13 @@ test('overview visibility toggles completed entries and groups release entries b
   const releases=[{id:1,projectId:1,version:'v1',status:'planned',published:false,dueDate:null},{id:2,projectId:1,version:'v2',status:'published',published:true,dueDate:null}];
   api.setWorkspace({projects:[project],releases,tasks:[task(1,'Offen',1,{releaseId:1}),task(2,'Fertig',1,{completed:true,status:'done',releaseId:1}),task(3,'Funktion',1,{kind:'feature',releaseId:1}),task(4,'Fehler',1,{kind:'fix',releaseId:1}),task(5,'Inbox fertig',null,{completed:true,status:'done'})],subtasks:[]});
   api.showView(1); assert.match(node('#content').innerHTML,/Offen/); assert.doesNotMatch(node('#content').innerHTML,/Fertig/);
+  assert.match(node('#content').innerHTML, /<div class="overview-toolbar"><nav class="task-tabs"[\s\S]*<\/nav><button[^>]*data-action="toggle-completed"[\s\S]*<\/div>\s*<section class="panel task-panel"/);
+  click('tab-history'); assert.doesNotMatch(node('#content').innerHTML,/data-action="toggle-completed"/); click('tab-task');
   click('toggle-completed'); assert.match(node('#content').innerHTML,/Fertig/);
-  api.showView('inbox'); assert.doesNotMatch(node('#content').innerHTML,/Inbox fertig/); click('toggle-completed'); assert.match(node('#content').innerHTML,/Inbox fertig/);
+  api.showView('inbox'); assert.match(node('#content').innerHTML,/<div class="overview-toolbar inbox-toolbar"><button[^>]*data-action="toggle-completed"[\s\S]*<\/div>\s*<section class="panel task-panel"/);
+  assert.doesNotMatch(node('#content').innerHTML,/Inbox fertig/); click('toggle-completed'); assert.match(node('#content').innerHTML,/Inbox fertig/);
   api.showView(1); click('tab-releases');
+  assert.match(node('#content').innerHTML, /<\/nav><button[^>]*data-action="toggle-completed"[\s\S]*<\/div>\s*<section class="panel"/);
   assert.doesNotMatch(node('#content').innerHTML,/Release v2 öffnen/);
   assert.match(node('#content').innerHTML,/<h3>Aufgaben<\/h3>[\s\S]*Fertig[\s\S]*<h3>Features<\/h3>[\s\S]*Funktion[\s\S]*<h3>Fixes<\/h3>[\s\S]*Fehler/);
   click('toggle-completed'); assert.match(node('#content').innerHTML,/Release v2 öffnen/);
@@ -488,8 +492,8 @@ test('history appears on every project and in task and release details with scop
  ];
  api.setWorkspace({projects:[project],tasks:[task(2,'Aufgabe',1)],subtasks:[],history});
  api.showView(1); assert.match(node('#content').innerHTML,/tab-history/); click('tab-history');
- assert.match(node('#content').innerHTML,/Alt/); assert.doesNotMatch(node('#content').innerHTML,/Privat/);
- api.selectTask(2); assert.match(node('#details').innerHTML,/Privat/); assert.match(node('#details').innerHTML,/data-history-kind="task"/);
+ assert.match(node('#content').innerHTML,/Alt/); assert.doesNotMatch(node('#content').innerHTML,/Privat/); assert.doesNotMatch(node('#content').innerHTML,/<h3>Verlauf<\/h3>/);
+ api.selectTask(2); assert.match(node('#details').innerHTML,/<h3>Verlauf<\/h3>/); assert.match(node('#details').innerHTML,/Privat/); assert.match(node('#details').innerHTML,/data-history-kind="task"/);
 });
 
 test('history notes submit the selected entity and revision through the bridge', async () => {
