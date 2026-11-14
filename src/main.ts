@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron';
 import { join } from 'node:path';
 import { PlannerDatabase } from './database';
-import type { ProjectFields, TaskFields, ReleaseStatus, HistoryKind } from './shared';
+import type { ProjectFields, TaskFields, ReleaseStatus, HistoryKind, NoteFields } from './shared';
 
 const indexPath = join(__dirname, '../ui/index.html');
 let window: BrowserWindow | null = null;
@@ -33,14 +33,25 @@ function createWindow(): void {
 
 function setupDatabase(): void {
   const store = new PlannerDatabase(join(app.getPath('userData'), 'hq.sqlite'));
+  const saveWithNotes = (kind: HistoryKind, id: number | null, notes: NoteFields[] | undefined, save: () => void) => {
+    const items = (workspace: ReturnType<PlannerDatabase['read']>) => kind === 'project' ? workspace.projects : kind === 'task' ? workspace.tasks : workspace.releases;
+    const before = new Set(items(store.read()).map(item => item.id));
+    save();
+    const savedId = id ?? items(store.read()).find(item => !before.has(item.id))?.id;
+    if (notes !== undefined) {
+      if (savedId === undefined) throw new Error('Der gespeicherte Eintrag wurde nicht gefunden.');
+      store.saveHistoryNotes(kind, savedId, notes);
+    }
+    return store.read();
+  };
   ipcMain.handle('workspace:read', () => store.read());
   ipcMain.handle('history:add-note', (_event, kind: HistoryKind, id: number, text: string, revision: number) => store.mutate(revision, () => { store.addHistoryNote(kind, id, text); return store.read(); }));
-  ipcMain.handle('release:create', (_event, projectId: number, version: string, dueDate: string | null, revision: number) => store.mutate(revision, () => { store.createRelease(projectId, version, dueDate); return store.read(); }));
-  ipcMain.handle('release:rename', (_event, id: number, version: string, dueDate: string | null, status: ReleaseStatus, revision: number) => store.mutate(revision, () => { store.renameRelease(id, version, dueDate, status); return store.read(); }));
+  ipcMain.handle('release:create', (_event, projectId: number, version: string, dueDate: string | null, revision: number, notes?: NoteFields[]) => store.mutate(revision, () => saveWithNotes('release', null, notes, () => store.createRelease(projectId, version, dueDate))));
+  ipcMain.handle('release:rename', (_event, id: number, version: string, dueDate: string | null, status: ReleaseStatus, revision: number, notes?: NoteFields[]) => store.mutate(revision, () => saveWithNotes('release', id, notes, () => store.renameRelease(id, version, dueDate, status))));
   ipcMain.handle('release:delete', (_event, id: number, revision: number) => store.mutate(revision, () => { store.deleteRelease(id); return store.read(); }));
   ipcMain.handle('release:publish', (_event, id: number, revision: number) => store.mutate(revision, () => { store.publishRelease(id); return store.read(); }));
-  ipcMain.handle('project:save', (_event, id: number | null, fields: ProjectFields, revision: number) => store.mutate(revision, () => { store.saveProject(id, fields); return store.read(); }));
-  ipcMain.handle('task:save', (_event, id: number | null, fields: TaskFields, revision: number) => store.mutate(revision, () => { store.saveTask(id, fields); return store.read(); }));
+  ipcMain.handle('project:save', (_event, id: number | null, fields: ProjectFields, revision: number, notes?: NoteFields[]) => store.mutate(revision, () => saveWithNotes('project', id, notes, () => store.saveProject(id, fields))));
+  ipcMain.handle('task:save', (_event, id: number | null, fields: TaskFields, revision: number, notes?: NoteFields[]) => store.mutate(revision, () => saveWithNotes('task', id, notes, () => store.saveTask(id, fields))));
   ipcMain.handle('task:delete', (_event, id: number, revision: number) => store.mutate(revision, () => { store.deleteTask(id); return store.read(); }));
   ipcMain.handle('task:complete', (_event, id: number, completed: boolean, revision: number) => store.mutate(revision, () => { store.completeTask(id, completed); return store.read(); }));
   ipcMain.handle('subtask:add', (_event, id: number, value: string, revision: number) => store.mutate(revision, () => { store.addSubtask(id, value); return store.read(); }));

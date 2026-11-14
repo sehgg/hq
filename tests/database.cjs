@@ -23,6 +23,28 @@ function tempDatabase(t, legacy = false) {
 }
 function find(db, title) { return db.read().tasks.find(item => item.title === title); }
 
+test('manual note edits preserve scope, enforce deletion rules and advance revisions', t => {
+  const db = new PlannerDatabase(tempDatabase(t));
+  db.saveProject(null,{title:'Projekt',priority:'normal',description:'',kind:'normal',dueDate:null});
+  const project = db.read().projects[0];
+  db.saveTask(null, fields('Aufgabe', {projectId:project.id}));
+  const task = find(db,'Aufgabe');
+  db.addHistoryNote('project',project.id,'Projektmeldung');
+  db.addHistoryNote('task',task.id,'Aufgabenmeldung');
+  const projectNote = db.read().history.find(entry => entry.manual && entry.entityKind === 'project');
+  const taskNote = db.read().history.find(entry => entry.manual && entry.entityKind === 'task');
+  const revision = db.read().revision;
+  db.mutate(revision, () => db.saveHistoryNotes('task',task.id,[{id:taskNote.id,text:'Bearbeitet'}]));
+  assert.ok(db.read().revision > revision);
+  assert.equal(db.read().history.find(entry => entry.id === taskNote.id).newValue,'Bearbeitet');
+  assert.throws(() => db.mutate(db.read().revision, () => db.saveHistoryNotes('task',task.id,[])), /nicht gelöscht/);
+  assert.throws(() => db.mutate(db.read().revision, () => db.saveHistoryNotes('project',project.id,[{id:taskNote.id,text:'Fremd'}])), /nicht gefunden/);
+  db.mutate(db.read().revision, () => db.saveHistoryNotes('project',project.id,[]));
+  assert.ok(!db.read().history.some(entry => entry.id === projectNote.id));
+  assert.throws(() => db.mutate(revision, () => db.saveHistoryNotes('task',task.id,[{id:taskNote.id,text:'Alt'}])), /zwischenzeitlich geändert/);
+  db.close();
+});
+
 test('editing subtasks preserves completion and rolls back invalid task changes', t => {
   const db = new PlannerDatabase(tempDatabase(t));
   db.saveTask(null, fields('Aufgabe', {subtasks:[{id:null,title:'Erste'},{id:null,title:'Zweite'}]}));

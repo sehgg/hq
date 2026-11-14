@@ -14,16 +14,17 @@ export interface Subtask { id: number; taskId: number; title: string; completed:
 export interface Release { id: number; projectId: number; version: string; dueDate: string | null; status: ReleaseStatus; published: boolean }
 export type HistoryKind = 'project' | 'task' | 'release';
 export interface HistoryEntry { id: number; entityKind: HistoryKind; entityId: number; projectId: number | null; entityTitle: string; date: string; field: string; oldValue: string | null; newValue: string | null; manual: boolean }
+export interface NoteFields { id: number | null; text: string }
 export interface Workspace { history: HistoryEntry[]; revision: number; releases: Release[]; projects: Project[]; tasks: Task[]; subtasks: Subtask[] }
 export interface HqApi {
  read(): Promise<Workspace>;
  addHistoryNote(kind: HistoryKind, id: number, text: string, revision: number): Promise<Workspace>;
- createRelease(projectId: number, version: string, dueDate: string | null, revision: number): Promise<Workspace>;
- renameRelease(id: number, version: string, dueDate: string | null, status: ReleaseStatus, revision: number): Promise<Workspace>;
+ createRelease(projectId: number, version: string, dueDate: string | null, revision: number, notes?: NoteFields[]): Promise<Workspace>;
+ renameRelease(id: number, version: string, dueDate: string | null, status: ReleaseStatus, revision: number, notes?: NoteFields[]): Promise<Workspace>;
  publishRelease(id: number, revision: number): Promise<Workspace>;
  deleteRelease(id: number, revision: number): Promise<Workspace>;
- saveProject(id: number | null, fields: ProjectFields, revision: number): Promise<Workspace>;
- saveTask(id: number | null, fields: TaskFields, revision: number): Promise<Workspace>;
+ saveProject(id: number | null, fields: ProjectFields, revision: number, notes?: NoteFields[]): Promise<Workspace>;
+ saveTask(id: number | null, fields: TaskFields, revision: number, notes?: NoteFields[]): Promise<Workspace>;
  completeTask(id: number, completed: boolean, revision: number): Promise<Workspace>;
  deleteTask(id: number, revision: number): Promise<Workspace>;
  addSubtask(taskId: number, title: string, revision: number): Promise<Workspace>;

@@ -80,6 +80,8 @@ export class PlannerDatabase {
     field TEXT NOT NULL, old_value TEXT, new_value TEXT, manual INTEGER NOT NULL DEFAULT 0
    ) STRICT;
    CREATE TRIGGER IF NOT EXISTS revision_history_insert AFTER INSERT ON history BEGIN UPDATE workspace_revision SET revision=revision+1 WHERE id=1; END;`);
+   this.db.exec(`CREATE TRIGGER IF NOT EXISTS revision_history_update AFTER UPDATE ON history BEGIN UPDATE workspace_revision SET revision=revision+1 WHERE id=1; END;
+   CREATE TRIGGER IF NOT EXISTS revision_history_delete AFTER DELETE ON history BEGIN UPDATE workspace_revision SET revision=revision+1 WHERE id=1; END;`);
    this.db.exec('UPDATE tasks SET feature_id=NULL WHERE feature_id IS NOT NULL');
    if (this.db.prepare('PRAGMA foreign_key_check').get()) throw new Error('Die Datenbank enthält ungültige Verknüpfungen.');
    this.db.exec('COMMIT');
@@ -192,6 +194,25 @@ export class PlannerDatabase {
   const projectId = kind === 'project' ? id : (item as Task | Release).projectId;
   const name = 'version' in item ? item.version : item.title;
   this.db.prepare('INSERT INTO history (entity_kind,entity_id,project_id,entity_title,field,new_value,manual) VALUES (?,?,?,?,?,?,1)').run(kind,id,projectId,name,'Meldung',note);
+ }
+ saveHistoryNotes(kind: HistoryKind, id: number, notes: import('./shared').NoteFields[]): void {
+  if (!Array.isArray(notes)) throw new Error('Die Meldungen sind ungültig.');
+  const existing = this.read().history.filter(entry => entry.manual && entry.entityKind === kind && entry.entityId === id);
+  const ids = new Set<number>();
+  for (const note of notes) {
+   if (!note || typeof note.text !== 'string' || !note.text.trim() || note.text.trim().length > 10000) throw new Error('Eine Meldung muss zwischen 1 und 10000 Zeichen haben.');
+   if (note.id !== null) {
+    const noteId = identifier(note.id);
+    if (ids.has(noteId) || !existing.some(entry => entry.id === noteId)) throw new Error('Die Meldung wurde nicht gefunden oder mehrfach angegeben.');
+    ids.add(noteId);
+   }
+  }
+  if (kind !== 'project' && existing.some(entry => !ids.has(entry.id))) throw new Error('Meldungen dieses Eintrags können nicht gelöscht werden.');
+  for (const note of notes) {
+   if (note.id === null) this.addHistoryNote(kind, id, note.text);
+   else if (existing.find(entry => entry.id === note.id)?.newValue !== note.text.trim()) this.db.prepare('UPDATE history SET new_value=? WHERE id=? AND manual=1').run(note.text.trim(),note.id);
+  }
+  if (kind === 'project') for (const entry of existing) if (!ids.has(entry.id)) this.db.prepare('DELETE FROM history WHERE id=? AND manual=1').run(entry.id);
  }
  saveProject(id: number | null, fields: ProjectFields): void {
   if (fields.kind !== 'normal' && fields.kind !== 'software') throw new Error('Der Projekttyp ist ungültig.');

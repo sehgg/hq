@@ -74,6 +74,7 @@
           <div id="project-due-conflicts" class="project-due-conflicts" aria-live="polite" hidden></div>
         </div>
         <label class="field extra-field"><span id="description-label">Beschreibung</span><textarea id="entry-description" rows="3" maxlength="10000"></textarea></label>
+        <fieldset class="criteria-editor"><legend>Meldungen</legend><div id="entry-notes"></div><button type="button" class="button compact" id="add-entry-note" aria-label="Meldung hinzufügen">+</button></fieldset>
         <div id="release-assignment-field" hidden><label class="field extra-field"><span>Zielversion</span><select id="entry-target-version"></select></label><p id="published-version" class="release-note" hidden></p></div>
         <div id="feature-fields" hidden>
           <fieldset class="criteria-editor"><legend>Akzeptanzkriterien</legend><div id="entry-criteria"></div><button type="button" class="button compact" id="add-criterion" aria-label="Akzeptanzkriterium hinzufügen">+</button></fieldset>
@@ -112,7 +113,7 @@
   </dialog>
   <dialog id="release-dialog" aria-labelledby="release-dialog-title">
     <form id="release-form"><div class="dialog-head"><h2 id="release-dialog-title">Neues Release</h2><button type="button" class="button compact" id="close-release" aria-label="Schließen">×</button></div>
-    <fieldset><label class="field"><span>Versionsnummer</span><input id="release-version" type="text" maxlength="120" required placeholder="z. B. v0.4.0"></label><label class="field extra-field"><span>Fällig am</span><input id="release-due" type="date"></label><label class="field extra-field" id="release-status-field" hidden><span>Status</span><select id="release-status"><option value="planned">Geplant</option><option value="in_progress">In Arbeit</option><option value="paused">Pausiert</option><option value="published">Veröffentlicht</option></select></label></fieldset>
+    <fieldset><label class="field"><span>Versionsnummer</span><input id="release-version" type="text" maxlength="120" required placeholder="z. B. v0.4.0"></label><label class="field extra-field"><span>Fällig am</span><input id="release-due" type="date"></label><label class="field extra-field" id="release-status-field" hidden><span>Status</span><select id="release-status"><option value="planned">Geplant</option><option value="in_progress">In Arbeit</option><option value="paused">Pausiert</option><option value="published">Veröffentlicht</option></select></label><fieldset class="criteria-editor"><legend>Meldungen</legend><div id="release-notes"></div><button type="button" class="button compact" id="add-release-note" aria-label="Meldung hinzufügen">+</button></fieldset></fieldset>
     <p id="release-error" class="editor-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" class="button danger" id="delete-release-entry" hidden>Löschen</button><button type="button" class="button secondary" id="cancel-release">Abbrechen</button><button type="submit" class="button primary" id="save-release">Release anlegen</button></div></form>
   </dialog>
   <dialog id="publish-dialog" aria-labelledby="publish-title" aria-describedby="publish-description">

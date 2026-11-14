@@ -509,23 +509,17 @@ test('history appears on every project and in task and release details with scop
  api.setWorkspace({projects:[project],tasks:[task(2,'Aufgabe',1)],subtasks:[],history});
  api.showView(1); assert.match(node('#content').innerHTML,/tab-history/); click('tab-history');
  assert.match(node('#content').innerHTML,/Alt/); assert.doesNotMatch(node('#content').innerHTML,/Privat/); assert.doesNotMatch(node('#content').innerHTML,/<h3>Verlauf<\/h3>/);
- api.selectTask(2); assert.match(node('#details').innerHTML,/<h3>Verlauf<\/h3>/); assert.match(node('#details').innerHTML,/Privat/); assert.match(node('#details').innerHTML,/data-history-kind="task"/);
+ api.selectTask(2); assert.match(node('#details').innerHTML,/<h3>Verlauf<\/h3>/); assert.match(node('#details').innerHTML,/Privat/); assert.doesNotMatch(node('#details').innerHTML,/data-history-kind/);
 });
 
-test('history notes submit the selected entity and revision through the bridge', async () => {
- let saved;
- const {api,submit,node}=renderer({read:()=>new Promise(()=>{}),addHistoryNote:async (...args)=>{
-  saved=args;
-  return {revision:8,projects:[],tasks:[],releases:[],subtasks:[],history:[]};
- }});
- api.setWorkspace({revision:7,projects:[],tasks:[],subtasks:[],history:[]});
- const form=apiForm();
- await submit(form);
- assert.deepEqual(saved,['release',42,'Meldung',7]);
- function apiForm() {
-  const element=node('#form');
-  element.dataset.historyKind='release'; element.dataset.historyId='42';
-  element.querySelector=()=>({value:'Meldung'});
-  return element;
- }
+test('manual notes are editable in their entity editor with project-only deletion', () => {
+ const {api,node}=renderer();
+ const history=[{id:1,entityKind:'task',entityId:2,manual:true,newValue:'Aufgabennotiz'}, {id:2,entityKind:'project',entityId:1,manual:true,newValue:'Projektnotiz'}];
+ api.setWorkspace({projects:[{id:1,title:'Projekt',kind:'normal',priority:'normal',description:'',dueDate:null}],tasks:[task(2,'Aufgabe',1)],subtasks:[],history});
+ api.openEditor({kind:'task',id:2});
+ assert.match(node('#entry-notes').innerHTML,/Aufgabennotiz/);
+ assert.doesNotMatch(node('#entry-notes').innerHTML,/data-remove-note/);
+ api.openEditor({kind:'project',id:1});
+ assert.match(node('#entry-notes').innerHTML,/Projektnotiz/);
+ assert.match(node('#entry-notes').innerHTML,/data-remove-note/);
 });

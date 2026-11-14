@@ -5,6 +5,7 @@ type Task = import('./shared').Task;
 type Workspace = import('./shared').Workspace;
 type CriterionFields = import('./shared').CriterionFields;
 type SubtaskFields = import('./shared').SubtaskFields;
+type NoteFields = import('./shared').NoteFields;
 type TaskKind = import('./shared').TaskKind;
 type ProjectKind = import('./shared').ProjectKind;
 type ReleaseStatus = import('./shared').ReleaseStatus;
@@ -181,6 +182,32 @@ let pendingDeleteTaskId: number | null = null;
 let selectedPredecessors = new Set<number>();
 let draftCriteria: CriterionFields[] = [];
 let draftSubtasks: SubtaskFields[] = [];
+let draftNotes: NoteFields[] = [];
+let draftNoteKind: HistoryKind = 'task';
+let noteContainer: HTMLElement;
+function openNotes(kind: HistoryKind, id: number | null, selector: string): void {
+  draftNoteKind = kind;
+  noteContainer = document.querySelector<HTMLElement>(selector)!;
+  draftNotes = (workspace.history ?? []).filter(entry => entry.manual && entry.entityKind === kind && entry.entityId === id).map(entry => ({id:entry.id, text:entry.newValue ?? ''}));
+  renderNotes();
+}
+function renderNotes(): void {
+  noteContainer.innerHTML = draftNotes.map((note, index) => `<div class="criterion-row"><label class="criterion-text"><span class="sr-only">Meldung ${index + 1}</span><textarea required maxlength="10000" data-note-text="${index}">${escapeHtml(note.text)}</textarea></label>${draftNoteKind === 'project' || note.id === null ? `<button type="button" class="button compact" data-remove-note="${index}" aria-label="Meldung ${index + 1} entfernen">−</button>` : ''}</div>`).join('');
+}
+for (const [container, button] of [['#entry-notes', '#add-entry-note'], ['#release-notes', '#add-release-note']]) {
+  document.querySelector(button)!.addEventListener('click', () => { draftNotes.push({id:null,text:''}); renderNotes(); });
+  const element = document.querySelector<HTMLElement>(container)!;
+  element.addEventListener('input', event => {
+    if (!(event.target instanceof HTMLTextAreaElement) || event.target.dataset.noteText === undefined) return;
+    const note = draftNotes[Number(event.target.dataset.noteText)];
+    if (note) note.text = event.target.value;
+  });
+  element.addEventListener('click', event => {
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest<HTMLButtonElement>('[data-remove-note]');
+    if (button) { draftNotes.splice(Number(button.dataset.removeNote), 1); renderNotes(); }
+  });
+}
 const releaseStatusNames: Record<ReleaseStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', published: 'Veröffentlicht' };
 const statusNames: Record<TaskStatus, string> = { planned: 'Geplant', in_progress: 'In Arbeit', paused: 'Pausiert', done: 'Erledigt' };
 function errorMessage(error: unknown): string {
@@ -306,6 +333,7 @@ function openReleaseDialog(id: number | null = null): void {
   const release = id === null ? undefined : workspace.releases.find(item => item.id === id && item.projectId === view);
   if (id !== null && !release) return;
   editingReleaseId = id;
+  openNotes('release', id, '#release-notes');
   releaseTitle.textContent = release ? 'Release bearbeiten' : 'Neues Release';
   releaseVersion.value = release?.version ?? '';
   releaseDue.value = release?.dueDate ?? '';
@@ -323,7 +351,7 @@ releaseForm.addEventListener('submit', async event => {
   if (saving || typeof view !== 'number') return;
   const id = editingReleaseId;
   saving = true; saveRelease.disabled = true; releaseError.hidden = true;
-  try { workspace = id === null ? await window.hq.createRelease(view, releaseVersion.value, releaseDue.value || null, workspace.revision) : await window.hq.renameRelease(id, releaseVersion.value, releaseDue.value || null, releaseStatus.value as ReleaseStatus, workspace.revision); releaseDialog.close(); render(); announce(id === null ? 'Release angelegt.' : 'Release gespeichert.'); }
+  try { workspace = id === null ? await window.hq.createRelease(view, releaseVersion.value, releaseDue.value || null, workspace.revision, draftNotes) : await window.hq.renameRelease(id, releaseVersion.value, releaseDue.value || null, releaseStatus.value as ReleaseStatus, workspace.revision, draftNotes); releaseDialog.close(); render(); announce(id === null ? 'Release angelegt.' : 'Release gespeichert.'); }
   catch (error) { releaseError.textContent = errorMessage(error); releaseError.hidden = false; }
   finally { saving = false; saveRelease.disabled = false; }
 });
@@ -429,22 +457,8 @@ function historyPanel(kind: HistoryKind, id: number): string {
     ? entry.projectId === id && (!entry.manual || (entry.entityKind === 'project' && entry.entityId === id))
     : entry.entityKind === kind && entry.entityId === id);
   const rows = entries.map(entry => `<tr><td>${escapeHtml(new Date(entry.date).toLocaleString('de-DE'))}</td><td>${kind === 'project' && entry.entityKind !== 'project' ? escapeHtml(entry.entityTitle) + ' · ' : ''}${escapeHtml(entry.field)}</td><td>${escapeHtml(entry.oldValue ?? '–')}</td><td>${escapeHtml(entry.newValue ?? '–')}</td></tr>`).join('');
-  return `<section class="history">${kind === 'project' ? '' : '<h3>Verlauf</h3>'}<div class="history-table"><table><thead><tr><th>Datum</th><th>Änderung</th><th>Alter Wert</th><th>Neuer Wert</th></tr></thead><tbody>${rows || '<tr><td colspan="4">Noch keine Meldungen</td></tr>'}</tbody></table></div><form class="history-form" data-history-kind="${kind}" data-history-id="${id}"><label>Meldung <input name="note" maxlength="10000" required></label><button class="button compact" type="submit">Hinzufügen</button></form></section>`;
+  return `<section class="history">${kind === 'project' ? '' : '<h3>Verlauf</h3>'}<div class="history-table"><table><thead><tr><th>Datum</th><th>Änderung</th><th>Alter Wert</th><th>Neuer Wert</th></tr></thead><tbody>${rows || '<tr><td colspan="4">Noch keine Meldungen</td></tr>'}</tbody></table></div></section>`;
 }
-
-document.addEventListener('submit', async event => {
-  if (!(event.target instanceof HTMLFormElement) || !event.target.dataset.historyKind || saving) return;
-  event.preventDefault();
-  const form = event.target;
-  const input = form.querySelector<HTMLInputElement>('input[name="note"]');
-  if (!input) return;
-  saving = true;
-  try {
-    workspace = await window.hq.addHistoryNote(form.dataset.historyKind as HistoryKind, Number(form.dataset.historyId), input.value, workspace.revision);
-    render();
-  } catch (error) { announce(errorMessage(error), true); }
-  finally { saving = false; }
-});
 
 function renderDetails(): void {
   const task = workspace.tasks.find(item => item.id === selectedTaskId);
@@ -546,6 +560,7 @@ function announce(message: string, error = false): void {
 
 function openEditor(mode: EditorMode): void {
   editing = mode;
+  openNotes(mode.kind, mode.id, '#entry-notes');
   const isTask = mode.kind === 'task';
   const task = isTask ? workspace.tasks.find(item => item.id === mode.id) : undefined;
   const entry = isTask ? task : workspace.projects.find(item => item.id === mode.id);
@@ -825,14 +840,14 @@ form.addEventListener('submit', async event => {
   try {
     if (mode.kind === 'project') {
       const previousIds = new Set(workspace.projects.map(project => project.id));
-      workspace = await window.hq.saveProject(mode.id, { ...fields, kind: projectKindField.value as ProjectKind, dueDate: projectDueField.value || null }, workspace.revision);
+      workspace = await window.hq.saveProject(mode.id, { ...fields, kind: projectKindField.value as ProjectKind, dueDate: projectDueField.value || null }, workspace.revision, draftNotes);
       editing = null;
       editor.close();
       const newProject = workspace.projects.find(project => !previousIds.has(project.id));
       showView(newProject?.id ?? view);
       announce(mode.id === null ? 'Projekt angelegt.' : 'Projekt gespeichert.');
     } else {
-      workspace = await window.hq.saveTask(mode.id, { ...fields, kind: editorTaskKind, featureId: null, releaseId: targetVersionField.value === 'keep-published' ? editorPublishedReleaseId : targetVersionField.value ? Number(targetVersionField.value) : null, criteria: editorTaskKind !== 'task' ? draftCriteria : [], subtasks: draftSubtasks, projectId, dueDate: dueField.value || null, status: statusField.value as TaskStatus, predecessorIds: [...selectedPredecessors] }, workspace.revision);
+      workspace = await window.hq.saveTask(mode.id, { ...fields, kind: editorTaskKind, featureId: null, releaseId: targetVersionField.value === 'keep-published' ? editorPublishedReleaseId : targetVersionField.value ? Number(targetVersionField.value) : null, criteria: editorTaskKind !== 'task' ? draftCriteria : [], subtasks: draftSubtasks, projectId, dueDate: dueField.value || null, status: statusField.value as TaskStatus, predecessorIds: [...selectedPredecessors] }, workspace.revision, draftNotes);
       editing = null;
       editor.close();
       render();
