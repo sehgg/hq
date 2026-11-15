@@ -12,6 +12,10 @@ HQ is a local desktop planner for personal projects, priorities, and standalone 
 - Define goals and their completion criteria so they can be completed without Computer Use.
 - Every change has to be comitted
 
+## UI design
+
+Use the [Desktop Design System](../DesignSystem/README.md) as the design reference for new and updated HQ interfaces. Follow its guidance on layout, typography, color roles, and component behavior. Consult its [example markup](../DesignSystem/example/index.html) when implementing UI components.
+
 ## HQ CLI workflow
 
 Use the local `hq` CLI with the `HQ` project when working on planner entries for this repository.
